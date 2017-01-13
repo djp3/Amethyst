@@ -55,8 +55,8 @@ open class ReflowOperation: Operation {
             }
         }
 
-        //Set intermediate positions for the windows
-        if UserConfiguration.shared.animateWindows(){
+		//Set intermediate positions for the windows
+        if UserConfiguration.shared.animateWindows() {
             let step: CGFloat = CGFloat(0.05)
             for i in stride(from:step, to:1.0, by:step) {
                 for frameAssignment in frameAssignments {
@@ -277,7 +277,6 @@ open class ReflowOperation: Operation {
             correctedFrame.origin.y += padding
             correctedFrame.size.width -= 2 * padding
             correctedFrame.size.height -= 2 * padding
-            
         }
         window.setFrame(correctedFrame)
     }
