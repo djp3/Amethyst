@@ -10,28 +10,52 @@ import ApplicationServices
 import Foundation
 import Silica
 
-public extension SIWindow {
-    public static func topWindowForScreenAtPoint(_ point: CGPoint, withWindows windows: [SIWindow]) -> SIWindow? {
-        guard let windowDescriptions = windowDescriptions(.optionOnScreenOnly, windowID: CGWindowID(0)), windowDescriptions.count > 0 else {
-            return nil
-        }
+extension SIWindow {
+    // convert SIWindow objects to CGWindowIDs.
+    // additionally, return the full set of window descriptions (which is unsorted and may contain extra windows)
+    fileprivate static func windowInformation(_ windows: [SIWindow]) -> (IDs: Set<CGWindowID>, descriptions: [[String: AnyObject]]?) {
+        let ids = Set(windows.map { $0.windowID() })
+        return (IDs: ids, descriptions: windowDescriptions(.optionOnScreenOnly, windowID: CGWindowID(0)))
+    }
 
-        var windowsAtPoint: [[String: AnyObject]] = []
+    fileprivate static func onScreenWindowsAtPoint(_ point: CGPoint,
+                                                   withIDs windowIDs: Set<CGWindowID>,
+                                                   withDescriptions windowDescriptions: [[String: AnyObject]]) -> [[String: AnyObject]] {
+        var ret: [[String: AnyObject]] = []
+
+        // build a list of windows at this point
         for windowDescription in windowDescriptions {
+            guard let windowID = (windowDescription[kCGWindowNumber as String] as? NSNumber).flatMap({ CGWindowID($0.intValue) }),
+                windowIDs.contains(windowID) else {
+                continue
+            }
+
+            // only consider windows with bounds
             guard let windowFrameDictionary = windowDescription[kCGWindowBounds as String] as? [String: Any] else {
                 continue
             }
 
+            // only consider window bounds that contain the given point
             let windowFrame = CGRect(dictionaryRepresentation: windowFrameDictionary as CFDictionary)!
-
             guard windowFrame.contains(point) else {
                 continue
             }
-
-            windowsAtPoint.append(windowDescription)
+            ret.append(windowDescription)
         }
 
-        guard windowsAtPoint.count > 0 else {
+        return ret
+    }
+
+    // if there are several windows at a given screen point, take the top one
+    static func topWindowForScreenAtPoint(_ point: CGPoint, withWindows windows: [SIWindow]) -> SIWindow? {
+        let (ids, maybeWindowDescriptions) = windowInformation(windows)
+        guard let windowDescriptions = maybeWindowDescriptions, !windowDescriptions.isEmpty else {
+            return nil
+        }
+
+        let windowsAtPoint = onScreenWindowsAtPoint(point, withIDs: ids, withDescriptions: windowDescriptions)
+
+        guard !windowsAtPoint.isEmpty else {
             return nil
         }
 
@@ -63,7 +87,29 @@ public extension SIWindow {
         return windowInWindows(windows, withCGWindowDescription: windowDictionaryToFocus)
     }
 
-    internal static func windowInWindows(_ windows: [SIWindow], withCGWindowDescription windowDescription: [String: AnyObject]) -> SIWindow? {
+    // get the first window at a certain point, excluding one specific window from consideration
+    static func alternateWindowForScreenAtPoint(_ point: CGPoint, withWindows windows: [SIWindow], butNot ignoreWindow: SIWindow?) -> SIWindow? {
+        // only consider windows on this screen
+        let (ids, maybeWindowDescriptions) = windowInformation(windows)
+        guard let windowDescriptions = maybeWindowDescriptions, !windowDescriptions.isEmpty else {
+            return nil
+        }
+
+        let windowsAtPoint = onScreenWindowsAtPoint(point, withIDs: ids, withDescriptions: windowDescriptions)
+
+        for windowDescription in windowsAtPoint {
+            if let window = windowInWindows(windows, withCGWindowDescription: windowDescription) {
+                if window != ignoreWindow {
+                    return window
+                }
+            }
+        }
+
+        return nil
+    }
+
+    // find a window based on its window description within an array of SIWindow objects
+    static func windowInWindows(_ windows: [SIWindow], withCGWindowDescription windowDescription: [String: AnyObject]) -> SIWindow? {
         for window in windows {
             guard
                 let windowOwnerProcessIdentifier = windowDescription[kCGWindowOwnerPID as String] as? NSNumber, windowOwnerProcessIdentifier.int32Value == window.processIdentifier()
@@ -91,7 +137,9 @@ public extension SIWindow {
         return nil
     }
 
-    public static func windowDescriptions(_ options: CGWindowListOption, windowID: CGWindowID) -> [[String: AnyObject]]? {
+    // return an array of dictionaries of window information for all windows relative to windowID
+    // if windowID is 0, this will return all window information
+    static func windowDescriptions(_ options: CGWindowListOption, windowID: CGWindowID) -> [[String: AnyObject]]? {
         guard let cfWindowDescriptions = CGWindowListCopyWindowInfo(options, windowID) else {
             return nil
         }
@@ -103,7 +151,7 @@ public extension SIWindow {
         return windowDescriptions
     }
 
-    public func shouldBeManaged() -> Bool {
+    func shouldBeManaged() -> Bool {
         guard isMovable() else {
             return false
         }
@@ -115,7 +163,38 @@ public extension SIWindow {
         return true
     }
 
-    @discardableResult public func am_focusWindow() -> Bool {
+    func shouldFloat() -> Bool {
+        let userConfiguration = UserConfiguration.shared
+        let frame = self.frame()
+
+        if userConfiguration.floatSmallWindows() && frame.size.width < 500 && frame.size.height < 500 {
+            return true
+        }
+
+        return false
+    }
+
+    func moveScaled(to screen: NSScreen) {
+        let screenFrame = screen.frameWithoutDockOrMenu()
+        let currentFrame = frame()
+        var scaledFrame = currentFrame
+
+        if scaledFrame.width > screenFrame.width {
+            scaledFrame.size.width = screenFrame.width
+        }
+
+        if scaledFrame.height > screenFrame.height {
+            scaledFrame.size.height = screenFrame.height
+        }
+
+        if scaledFrame != currentFrame {
+            setFrame(scaledFrame)
+        }
+
+        move(to: screen)
+    }
+
+    @discardableResult func am_focusWindow() -> Bool {
         guard self.focus() else {
             return false
         }

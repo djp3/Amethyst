@@ -8,26 +8,49 @@
 
 import Silica
 
-private class FullscreenReflowOperation: ReflowOperation {
-    fileprivate override func main() {
-        let screenFrame = adjustedFrameForLayout(screen)
-        let frameAssignments: [FrameAssignment] = windows.map { window in
-            return FrameAssignment(frame: screenFrame, window: window, focused: false, screenFrame: screenFrame)
-        }
+final class FullscreenReflowOperation: ReflowOperation {
+    private let layout: FullscreenLayout
 
-        if isCancelled {
+    init(screen: NSScreen, windows: [SIWindow], layout: FullscreenLayout, frameAssigner: FrameAssigner) {
+        self.layout = layout
+        super.init(screen: screen, windows: windows, frameAssigner: frameAssigner)
+    }
+
+    func frameAssignments() -> [FrameAssignment] {
+        let window: SIWindow
+        let screenFrame = screen.adjustedFrame()
+        return windows.map { window in
+            let resizeRules = ResizeRules(isMain: true, unconstrainedDimension: .horizontal, scaleFactor: 1)
+            return FrameAssignment(frame: screenFrame, window: window, focused: false, screenFrame: screenFrame, resizeRules: resizeRules)
+        }
+    }
+
+    override func main() {
+        guard !isCancelled else {
             return
         }
 
-        performFrameAssignments(frameAssignments)
+        frameAssigner.performFrameAssignments(frameAssignments())
     }
 }
 
-open class FullscreenLayout: Layout {
-    override open class var layoutName: String { return "Fullscreen" }
-    override open class var layoutKey: String { return "fullscreen" }
+final class FullscreenLayout: Layout {
+    static var layoutName: String { return "Fullscreen" }
+    static var layoutKey: String { return "fullscreen" }
 
-    override open func reflowOperationForScreen(_ screen: NSScreen, withWindows windows: [SIWindow]) -> ReflowOperation {
-        return FullscreenReflowOperation(screen: screen, windows: windows, windowActivityCache: windowActivityCache)
+    let windowActivityCache: WindowActivityCache
+
+    init(windowActivityCache: WindowActivityCache) {
+        self.windowActivityCache = windowActivityCache
+    }
+
+    func reflow(_ windows: [SIWindow], on screen: NSScreen) -> ReflowOperation {
+        return FullscreenReflowOperation(screen: screen, windows: windows, layout: self, frameAssigner: self)
+    }
+
+    func assignedFrame(_ window: SIWindow, of windows: [SIWindow], on screen: NSScreen) -> FrameAssignment? {
+        return FullscreenReflowOperation(screen: screen, windows: windows, layout: self, frameAssigner: self).frameAssignments().first { $0.window == window }
     }
 }
+
+extension FullscreenLayout: FrameAssigner {}

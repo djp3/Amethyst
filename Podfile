@@ -6,17 +6,28 @@ target 'Amethyst' do
   pod 'Fabric'
   pod 'Crashlytics'
 
+  pod 'Cartography', '~> 1.1.0'
   pod 'CCNLaunchAtLoginItem', '~> 0.1'
-  pod 'CCNPreferencesWindowController-ObjC'
   pod 'Log'
-  pod 'MASShortcut', :git => 'https://github.com/ianyh/MASShortcut'
+  pod 'MASShortcut', git: 'https://github.com/ianyh/MASShortcut'
   pod 'RxCocoa'
   pod 'RxSwift'
-  pod 'Silica', :git => 'https://github.com/ianyh/Silica', :commit => 'a73415cd79ccee6e7c3dcb87ecf5d9889a6d85d2'
-  pod 'SwiftyJSON'
+  pod 'RxSwiftExt'
+  pod 'Silica', git: 'https://github.com/ianyh/Silica'
+  pod 'Sparkle'
+  pod 'SwiftyJSON', '~> 3.1'
+
   target 'AmethystTests' do
     inherit! :search_paths
     pod 'Nimble'
     pod 'Quick'
+  end
+
+  post_install do |installer|
+    installer.pods_project.targets.each do |target|
+      target.build_configurations.each do |config|
+        config.build_settings['SWIFT_VERSION'] = '3.2'
+      end
+    end
   end
 end

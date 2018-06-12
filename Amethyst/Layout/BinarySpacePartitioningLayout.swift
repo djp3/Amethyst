@@ -8,7 +8,7 @@
 
 import Silica
 
-internal class TreeNode {
+final class TreeNode {
     weak var parent: TreeNode?
     var left: TreeNode?
     var right: TreeNode?
@@ -93,7 +93,7 @@ internal class TreeNode {
         }
     }
 
-    internal func insertWindowID(_ windowID: CGWindowID) {
+    func insertWindowID(_ windowID: CGWindowID) {
         guard parent != nil || self.windowID != nil else {
             self.windowID = windowID
             return
@@ -136,23 +136,22 @@ internal class TreeNode {
 
 extension TreeNode: Equatable {}
 
-internal func == (lhs: TreeNode, rhs: TreeNode) -> Bool {
+func == (lhs: TreeNode, rhs: TreeNode) -> Bool {
     return lhs.windowID == rhs.windowID
 }
 
-private class BinarySpacePartitioningReflowOperation: ReflowOperation {
-    fileprivate typealias TraversalNode = (node: TreeNode, frame: CGRect)
+final class BinarySpacePartitioningReflowOperation: ReflowOperation {
+    private typealias TraversalNode = (node: TreeNode, frame: CGRect)
+    private let rootNode: TreeNode
 
-    fileprivate let rootNode: TreeNode
-
-    fileprivate init(screen: NSScreen, windows: [SIWindow], rootNode: TreeNode, windowActivityCache: WindowActivityCache) {
+    init(screen: NSScreen, windows: [SIWindow], rootNode: TreeNode, frameAssigner: FrameAssigner) {
         self.rootNode = rootNode
-        super.init(screen: screen, windows: windows, windowActivityCache: windowActivityCache)
+        super.init(screen: screen, windows: windows, frameAssigner: frameAssigner)
     }
 
-    fileprivate override func main() {
-        if windows.count == 0 {
-            return
+    func frameAssignments() -> [FrameAssignment] {
+        guard !windows.isEmpty else {
+            return []
         }
 
         let windowIDMap: [CGWindowID: SIWindow] = windows.reduce([:]) { (windowMap, window) -> [CGWindowID: SIWindow] in
@@ -162,11 +161,11 @@ private class BinarySpacePartitioningReflowOperation: ReflowOperation {
         }
 
         let focusedWindow = SIWindow.focused()
-        let baseFrame = adjustedFrameForLayout(screen)
-        var frameAssignments: [FrameAssignment] = []
+        let baseFrame = screen.adjustedFrame()
+        var ret: [FrameAssignment] = []
         var traversalNodes: [TraversalNode] = [(node: rootNode, frame: baseFrame)]
 
-        while traversalNodes.count > 0 {
+        while !traversalNodes.isEmpty {
             let traversalNode = traversalNodes[0]
 
             traversalNodes = [TraversalNode](traversalNodes.dropFirst(1))
@@ -177,8 +176,9 @@ private class BinarySpacePartitioningReflowOperation: ReflowOperation {
                     continue
                 }
 
-                let frameAssignment = FrameAssignment(frame: traversalNode.frame, window: window, focused: windowID == focusedWindow?.windowID(), screenFrame: baseFrame)
-                frameAssignments.append(frameAssignment)
+                let resizeRules = ResizeRules(isMain: true, unconstrainedDimension: .horizontal, scaleFactor: 1)
+                let frameAssignment = FrameAssignment(frame: traversalNode.frame, window: window, focused: windowID == focusedWindow?.windowID(), screenFrame: baseFrame, resizeRules: resizeRules)
+                ret.append(frameAssignment)
             } else {
                 guard let left = traversalNode.node.left, let right = traversalNode.node.right else {
                     LogManager.log?.error("Encountered an invalid node")
@@ -221,30 +221,56 @@ private class BinarySpacePartitioningReflowOperation: ReflowOperation {
             }
         }
 
-        if isCancelled {
+        return ret
+    }
+
+    override func main() {
+        guard !isCancelled else {
             return
         }
 
-        performFrameAssignments(frameAssignments)
+        frameAssigner.performFrameAssignments(frameAssignments())
     }
 }
 
-open class BinarySpacePartitioningLayout: Layout {
-    override open class var layoutName: String { return "Binary Space Partitioning" }
-    override open class var layoutKey: String { return "bsp" }
+final class BinarySpacePartitioningLayout: Layout {
+    static var layoutName: String { return "Binary Space Partitioning" }
+    static var layoutKey: String { return "bsp" }
 
-    internal var rootNode = TreeNode()
-    internal var lastKnownFocusedWindowID: CGWindowID?
+    let windowActivityCache: WindowActivityCache
 
-    open override func reflowOperationForScreen(_ screen: NSScreen, withWindows windows: [SIWindow]) -> ReflowOperation {
-        if windows.count > 0 && !rootNode.valid {
+    fileprivate var rootNode = TreeNode()
+    fileprivate var lastKnownFocusedWindowID: CGWindowID?
+
+    init(windowActivityCache: WindowActivityCache) {
+        self.windowActivityCache = windowActivityCache
+    }
+
+    func reflow(_ windows: [SIWindow], on screen: NSScreen) -> ReflowOperation {
+        if !windows.isEmpty && !rootNode.valid {
             constructInitialTreeWithWindows(windows)
         }
 
-        return BinarySpacePartitioningReflowOperation(screen: screen, windows: windows, rootNode: rootNode, windowActivityCache: windowActivityCache)
+        return BinarySpacePartitioningReflowOperation(screen: screen, windows: windows, rootNode: rootNode, frameAssigner: self)
     }
 
-    open override func updateWithChange(_ windowChange: WindowChange) {
+    func assignedFrame(_ window: SIWindow, of windows: [SIWindow], on screen: NSScreen) -> FrameAssignment? {
+        return BinarySpacePartitioningReflowOperation(screen: screen, windows: windows, rootNode: rootNode, frameAssigner: self).frameAssignments().first { $0.window == window }
+    }
+
+    private func constructInitialTreeWithWindows(_ windows: [SIWindow]) {
+        for window in windows {
+            guard rootNode.findWindowID(window.windowID()) == nil else {
+                continue
+            }
+
+            rootNode.insertWindowIDAtEnd(window.windowID())
+        }
+    }
+}
+
+extension BinarySpacePartitioningLayout: StatefulLayout {
+    func updateWithChange(_ windowChange: WindowChange) {
         switch windowChange {
         case let .add(window):
             guard rootNode.findWindowID(window.windowID()) == nil else {
@@ -280,7 +306,7 @@ open class BinarySpacePartitioningLayout: Layout {
         }
     }
 
-    open override func nextWindowIDCounterClockwise() -> CGWindowID? {
+    func nextWindowIDCounterClockwise() -> CGWindowID? {
         guard let focusedWindow = SIWindow.focused() else {
             return nil
         }
@@ -296,7 +322,7 @@ open class BinarySpacePartitioningLayout: Layout {
         return orderedIDs[nextWindowIndex]
     }
 
-    open override func nextWindowIDClockwise() -> CGWindowID? {
+    func nextWindowIDClockwise() -> CGWindowID? {
         guard let focusedWindow = SIWindow.focused() else {
             return nil
         }
@@ -311,14 +337,6 @@ open class BinarySpacePartitioningLayout: Layout {
 
         return orderedIDs[nextWindowIndex]
     }
-
-    internal func constructInitialTreeWithWindows(_ windows: [SIWindow]) {
-        for window in windows {
-            guard rootNode.findWindowID(window.windowID()) == nil else {
-                continue
-            }
-
-            rootNode.insertWindowIDAtEnd(window.windowID())
-        }
-    }
 }
+
+extension BinarySpacePartitioningLayout: FrameAssigner {}

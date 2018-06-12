@@ -3,6 +3,7 @@ Amethyst
 
 [![Join the chat at https://gitter.im/ianyh/Amethyst](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/ianyh/Amethyst?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
 [![Build Status](https://api.travis-ci.org/ianyh/Amethyst.svg?branch=development)](https://travis-ci.org/ianyh/Amethyst)
+[![Open Source Helpers](https://www.codetriage.com/ianyh/amethyst/badges/users.svg)](https://www.codetriage.com/ianyh/amethyst)
 
 Tiling window manager for macOS along the lines of [xmonad](http://xmonad.org/).
 
@@ -13,7 +14,7 @@ A quick screencast of basic functionality can be found [here](https://youtu.be/b
 Getting Amethyst
 ================
 
-Amethyst is available for direct download [here](http://ianyh.com/amethyst/versions/Amethyst-latest.zip) or using [homebrew cask](https://github.com/caskroom/homebrew-cask).
+Amethyst is available for direct download on the [releases page](https://github.com/ianyh/Amethyst/releases) or using [homebrew cask](https://github.com/caskroom/homebrew-cask).
 
 ```
 brew cask install amethyst
@@ -77,19 +78,20 @@ of the Keyboard preferences pane. The shortcuts will be of the form `ctrl +
 
 ![Mission Control keyboard shortcuts](http://ianyh.com/amethyst/images/missioncontrol-shortcuts.png)
 
+Amethyst currently supports sending windows to up to 10 spaces, despite macOS' limit of 16 spaces per display.
+
+_Important note_: You will probably want to disable `Automatically rearrange Spaces based on most recent use` (found under Mission Control in System Preferences). This setting is enabled by default, and will cause your Spaces to swap places based on use. This makes keyboard navigation between Spaces unpredictable.
+
 Contributing
 ============
 
 If you would like to see features or particular bugs fixed check out the Trello board [here](https://trello.com/b/cCg3xhlb/amethyst) and vote on things. It'll give me a better sense of what people want so I can prioritize.
 
-I love pull requests. If you'd like to contribute please branch off of the `development` branch and open pull requests against it rather than master. Otherwise just try to stick to the general style of the code.
+If you'd like to contribute please branch off of the `development` branch and open pull requests against it rather than `master`. Otherwise just try to stick to the general style of the code. There is a setup script to guide you through the process of installing necessary tools and getting dependencies built. To get started run
 
-In order to build Amethyst locally, you'll need to also perform the following steps after cloning the repo:
-
-- Install `carthage` and `rbenv`.
-  - These are not installed via the setup script so as to not casually pollute your global environment.
-- Run `rake setup`, which installs dependencies from Carthage and CocoaPods.
-  - Note that by default CocoaPods will be installed and run via `bundler`. This restricts the version to get around some bugs in the current CocoaPods beta.
+```bash
+$ ./bin/setup.sh
+```
 
 Contact
 =======
@@ -99,14 +101,7 @@ If you have questions or feedback you have a plethora of options. You can [email
 Donating
 ========
 
-Amethyst is free and always will be. That said, a couple of people have expressed their desire to donate money in appreciation. If you are so inclined I've set up two options:
-
-* You can find a Patreon page [here](http://www.patreon.com/ianyh) if you would like to pledge money regularly for releases.
-* If you would like to do a one-time donation there's a PayPal button below. If there's some other method of donating that you would prefer open an issue and I'll try to add it!
-
-[![PayPal Donate](https://img.shields.io/badge/paypal-donate-blue.svg)](https://www.paypal.com/cgi-bin/webscr?cmd=_donations&business=ianynda%40gmail%2ecom&lc=US&item_name=Ian%20Ynda%2dHummel&item_number=Amethyst&currency_code=USD&bn=PP%2dDonationsBF%3abtn_donate_LG%2egif%3aNonHosted)
-
-If you are considering donating to me, you are more than welcome to. Given the political climate in the US, though, you should also consider donating that money to a good cause in addition to or instead. Here's a very incomplete list of things that you might want to throw money at:
+Amethyst is free and always will be. That said, a couple of people have expressed their desire to donate money in appreciation. Given the current political climate I would recommend donating to one of these organizations instead:
 
 * [American Civil Liberties Union](https://www.aclu.org/)
 * [Planned Parenthood](https://www.plannedparenthood.org/)
@@ -123,5 +118,7 @@ And a bunch of technology-oriented ones:
 * [National Center for Women & Information Technology](https://www.ncwit.org/donate)
 * [girls who code](http://girlswhocode.com/get-involved/)
 * [MotherCoders](https://www.indiegogo.com/projects/mothercoders-a-giant-hack-for-moms-who-want-in)
-* [Trans*H4CK](http://www.transhack.org/support/)
+* [Trans*H4CK](http://www.transhack.org/donate/)
 * [Black Girls CODE](http://www.blackgirlscode.com/)
+
+Alternatively, I have a Patreon page set up [here](https://www.patreon.com/ianyh). Any proceeds will be donated to one of the above organizations. 

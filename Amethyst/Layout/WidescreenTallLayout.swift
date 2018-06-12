@@ -8,17 +8,17 @@
 
 import Silica
 
-private class WidescreenTallReflowOperation: ReflowOperation {
-    fileprivate let layout: WidescreenTallLayout
+final class WidescreenTallReflowOperation: ReflowOperation {
+    let layout: WidescreenTallLayout
 
-    fileprivate init(screen: NSScreen, windows: [SIWindow], layout: WidescreenTallLayout, windowActivityCache: WindowActivityCache) {
+    init(screen: NSScreen, windows: [SIWindow], layout: WidescreenTallLayout, frameAssigner: FrameAssigner) {
         self.layout = layout
-        super.init(screen: screen, windows: windows, windowActivityCache: windowActivityCache)
+        super.init(screen: screen, windows: windows, frameAssigner: frameAssigner)
     }
 
-    fileprivate override func main() {
+    func frameAssignments() -> [FrameAssignment] {
         if windows.count == 0 {
-            return
+            return []
         }
 
         let mainPaneCount = min(windows.count, layout.mainPaneCount)
@@ -26,7 +26,7 @@ private class WidescreenTallReflowOperation: ReflowOperation {
 
         let hasSecondaryPane = secondaryPaneCount > 0
 
-        let screenFrame = adjustedFrameForLayout(screen)
+        let screenFrame = screen.adjustedFrame()
 
         let mainPaneWindowHeight = screenFrame.height
         let secondaryPaneWindowHeight = hasSecondaryPane ? round(screenFrame.height / CGFloat(secondaryPaneCount)) : 0.0
@@ -36,62 +36,80 @@ private class WidescreenTallReflowOperation: ReflowOperation {
 
         let focusedWindow = SIWindow.focused()
 
-        let frameAssignments = windows.reduce([]) { frameAssignments, window -> [FrameAssignment] in
+        return windows.reduce([]) { frameAssignments, window -> [FrameAssignment] in
             var assignments = frameAssignments
             var windowFrame = CGRect.zero
             let windowIndex = frameAssignments.count
+            let isMain = windowIndex < mainPaneCount
+            var scaleFactor: CGFloat
 
-            if windowIndex < mainPaneCount {
+            if isMain {
+                scaleFactor = CGFloat(screenFrame.size.width / mainPaneWindowWidth) / CGFloat(mainPaneCount)
                 windowFrame.origin.x = screenFrame.origin.x + mainPaneWindowWidth * CGFloat(windowIndex)
                 windowFrame.origin.y = screenFrame.origin.y
                 windowFrame.size.width = mainPaneWindowWidth
                 windowFrame.size.height = mainPaneWindowHeight
             } else {
+                scaleFactor = CGFloat(screenFrame.size.width / secondaryPaneWindowWidth)
                 windowFrame.origin.x = screenFrame.origin.x + mainPaneWindowWidth * CGFloat(mainPaneCount)
                 windowFrame.origin.y = screenFrame.origin.y + (secondaryPaneWindowHeight * CGFloat(windowIndex - mainPaneCount))
                 windowFrame.size.width = secondaryPaneWindowWidth
                 windowFrame.size.height = secondaryPaneWindowHeight
             }
 
-            let frameAssignment = FrameAssignment(frame: windowFrame, window: window, focused: window.isEqual(to: focusedWindow), screenFrame: screenFrame)
+            let resizeRules = ResizeRules(isMain: isMain, unconstrainedDimension: .horizontal, scaleFactor: scaleFactor)
+            let frameAssignment = FrameAssignment(frame: windowFrame, window: window, focused: window.isEqual(to: focusedWindow), screenFrame: screenFrame, resizeRules: resizeRules)
 
             assignments.append(frameAssignment)
 
             return assignments
         }
+    }
+
+    override func main() {
 
         if isCancelled {
             return
         }
 
-        performFrameAssignments(frameAssignments)
+        frameAssigner.performFrameAssignments(frameAssignments())
     }
 }
 
-open class WidescreenTallLayout: Layout {
-    override open class var layoutName: String { return "Widescreen Tall" }
-    override open class var layoutKey: String { return "widescreen-tall" }
+final class WidescreenTallLayout: Layout {
+    static var layoutName: String { return "Widescreen Tall" }
+    static var layoutKey: String { return "widescreen-tall" }
+
+    let windowActivityCache: WindowActivityCache
 
     fileprivate var mainPaneCount: Int = 1
-    fileprivate var mainPaneRatio: CGFloat = 0.5
+    fileprivate(set) var mainPaneRatio: CGFloat = 0.5
 
-    override open func reflowOperationForScreen(_ screen: NSScreen, withWindows windows: [SIWindow]) -> ReflowOperation {
-        return WidescreenTallReflowOperation(screen: screen, windows: windows, layout: self, windowActivityCache: windowActivityCache)
+    init(windowActivityCache: WindowActivityCache) {
+        self.windowActivityCache = windowActivityCache
     }
 
-    override open func expandMainPane() {
-        mainPaneRatio = min(1, mainPaneRatio + UserConfiguration.shared.windowResizeStep())
+    func reflow(_ windows: [SIWindow], on screen: NSScreen) -> ReflowOperation {
+        return WidescreenTallReflowOperation(screen: screen, windows: windows, layout: self, frameAssigner: self)
     }
 
-    override open func shrinkMainPane() {
-        mainPaneRatio = max(0, mainPaneRatio - UserConfiguration.shared.windowResizeStep())
+    func assignedFrame(_ window: SIWindow, of windows: [SIWindow], on screen: NSScreen) -> FrameAssignment? {
+        return WidescreenTallReflowOperation(screen: screen, windows: windows, layout: self, frameAssigner: self).frameAssignments().first { $0.window == window }
+    }
+}
+
+extension WidescreenTallLayout: PanedLayout {
+    func recommendMainPaneRawRatio(rawRatio: CGFloat) {
+        mainPaneRatio = rawRatio
     }
 
-    override open func increaseMainPaneCount() {
-        mainPaneCount = mainPaneCount + 1
+    func increaseMainPaneCount() {
+        mainPaneCount += 1
     }
 
-    override open func decreaseMainPaneCount() {
+    func decreaseMainPaneCount() {
         mainPaneCount = max(1, mainPaneCount - 1)
     }
 }
+
+extension WidescreenTallLayout: FrameAssigner {}

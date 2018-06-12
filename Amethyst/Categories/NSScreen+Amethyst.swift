@@ -9,24 +9,34 @@
 import ApplicationServices
 import Foundation
 import Silica
+import SwiftyJSON
 
-public extension NSScreen {
-    public static func screenDescriptions() -> [[String: AnyObject]]? {
+extension NSScreen {
+    static func screenDescriptions() -> [JSON]? {
         guard let cfScreenDescriptions = CGSCopyManagedDisplaySpaces(_CGSDefaultConnection())?.takeRetainedValue() else {
             return nil
         }
         guard let screenDescriptions = cfScreenDescriptions as NSArray as? [[String: AnyObject]] else {
             return nil
         }
-        return screenDescriptions
+        return screenDescriptions.map { JSON($0) }
     }
 
-    public func screenIdentifier() -> String {
-        let managedDisplay = CGSCopyBestManagedDisplayForRect(_CGSDefaultConnection(), self.frameIncludingDockAndMenu())
-        return String(managedDisplay!.takeRetainedValue())
+    // Depending on the arrangement of multiple monitors, it's possible to get a height that's larger
+    // than any of the individual screens.  This function looks at each display frame's Y coordinates
+    // to calculate that height
+    static func globalHeight() -> CGFloat {
+        return (screens.map { $0.frame.maxY }.max() ?? 0) - (screens.map { $0.frame.minY }.min() ?? 0)
     }
 
-    public func focusScreen() {
+    func screenIdentifier() -> String? {
+        guard let managedDisplay = CGSCopyBestManagedDisplayForRect(_CGSDefaultConnection(), frameIncludingDockAndMenu()) else {
+            return nil
+        }
+        return String(managedDisplay.takeRetainedValue())
+    }
+
+    func focusScreen() {
         let screenFrame = self.frame
         let mouseCursorPoint = NSPoint(x: screenFrame.midX, y: screenFrame.midY)
         let mouseMoveEvent = CGEvent(mouseEventSource: nil, mouseType: .mouseMoved, mouseCursorPosition: mouseCursorPoint, mouseButton: .left)
