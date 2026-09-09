@@ -310,6 +310,9 @@ final class ScreenManager<Delegate: ScreenManagerDelegate>: NSObject, Codable {
             let captureImages: (([WindowCaptureRequest]) -> [CGImage]?)? = canSnapshot
                 ? { requests in WindowImageCapture.captureImages(for: requests, displayBounds: displayBounds) }
                 : nil
+            let captureIsVerifiable: (WindowCaptureRequest) -> Bool = { request in
+                WindowImageCapture.isCaptureVerifiable(request, displayBounds: displayBounds)
+            }
             let makeSnapshotAnimator: (() -> SnapshotAnimating)? = canSnapshot ? { ReflowAnimationOverlay() } : nil
 
             // A backdrop lets windows re-lay out in place and their proxies dissolve into fresh captures. The capturer waits
@@ -326,6 +329,7 @@ final class ScreenManager<Delegate: ScreenManagerDelegate>: NSObject, Codable {
                     frameAssignmentOperations: frameAssignments,
                     duration: userConfiguration.windowAnimationDuration(),
                     captureImages: captureImages,
+                    captureIsVerifiable: captureIsVerifiable,
                     captureBackdrop: captureBackdrop,
                     makeSnapshotAnimator: makeSnapshotAnimator,
                     screenID: screen.screenID()

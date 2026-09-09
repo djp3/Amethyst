@@ -123,6 +123,18 @@ enum WindowImageCapture {
     }
 
     /**
+     Whether a capture of this window reports the window's real surface size, so that a capture taken before the application has
+     redrawn can be told apart from a fresh one. SkyLight captures do; ScreenCaptureKit scales its output to the requested size
+     and so never reveals a stale surface.
+     */
+    static func isCaptureVerifiable(_ request: WindowCaptureRequest, displayBounds: CGRect?) -> Bool {
+        guard let displayBounds = displayBounds else {
+            return true
+        }
+        return displayBounds.contains(request.frame)
+    }
+
+    /**
      Captures every requested window in full.
 
      - Parameters:

@@ -338,6 +338,7 @@ final class AnimatedReflowOperation<Window: WindowType>: Operation, @unchecked S
     private let frameInterval: TimeInterval
     private let writesInline: Bool
     private let captureImages: (([WindowCaptureRequest]) -> [CGImage]?)?
+    private let captureIsVerifiable: (WindowCaptureRequest) -> Bool
     private let captureBackdrop: ((CGRect, [CGWindowID]) -> CGImage?)?
     private let makeSnapshotAnimator: (() -> SnapshotAnimating)?
     private let parkingOrigin: () -> CGPoint
@@ -364,6 +365,7 @@ final class AnimatedReflowOperation<Window: WindowType>: Operation, @unchecked S
          - frameInterval: Target time between accessibility glide ticks, and the pause that lets the overlay draw before windows are parked.
          - writesInline: Apply writes synchronously on the operation's thread instead of on per-application queues. For tests.
          - captureImages: Captures full images of the given windows; `nil` disables the snapshot strategy.
+         - captureIsVerifiable: Whether a fresh capture of the window would reveal a not-yet-redrawn surface by its size. Windows whose captures cannot be verified are not dissolved mid-glide; their proxies linger at the handoff instead.
          - captureBackdrop: Captures a screen without the given windows. With it, real windows are re-laid out in place behind the backdrop and their proxies cross-dissolve to fresh captures; without it they are parked off-screen.
          - makeSnapshotAnimator: Creates the overlay that shows and slides the snapshots; `nil` disables the snapshot strategy.
          - parkingOrigin: A point beyond every display where real windows are hidden during a snapshot animation.
@@ -377,6 +379,7 @@ final class AnimatedReflowOperation<Window: WindowType>: Operation, @unchecked S
         frameInterval: TimeInterval = 1.0 / 60.0,
         writesInline: Bool = false,
         captureImages: (([WindowCaptureRequest]) -> [CGImage]?)? = nil,
+        captureIsVerifiable: @escaping (WindowCaptureRequest) -> Bool = { _ in true },
         captureBackdrop: ((CGRect, [CGWindowID]) -> CGImage?)? = nil,
         makeSnapshotAnimator: (() -> SnapshotAnimating)? = nil,
         parkingOrigin: @escaping () -> CGPoint = AnimatedReflowOperation.defaultParkingOrigin,
@@ -390,6 +393,7 @@ final class AnimatedReflowOperation<Window: WindowType>: Operation, @unchecked S
         self.frameInterval = frameInterval
         self.writesInline = writesInline
         self.captureImages = captureImages
+        self.captureIsVerifiable = captureIsVerifiable
         self.captureBackdrop = captureBackdrop
         self.makeSnapshotAnimator = makeSnapshotAnimator
         self.parkingOrigin = parkingOrigin
@@ -693,11 +697,13 @@ final class AnimatedReflowOperation<Window: WindowType>: Operation, @unchecked S
 
             let due = pendingRecapture.filter { $0.value <= current }.map { $0.key }
             if !due.isEmpty {
-                let (group, dissolved) = dissolveToFreshCaptures(animator, participants, indices: due.sorted(), duration: max(duration - elapsed, minimumDissolveDuration), isFinalAttempt: false)
+                let remaining = max(duration - elapsed, minimumDissolveDuration)
+                let (group, dissolved, unverifiable) = dissolveToFreshCaptures(animator, participants, indices: due.sorted(), duration: remaining, isFinalAttempt: false)
                 refinements.append(contentsOf: [group].compactMap { $0 })
                 timings.recaptured += dissolved.count
+                timings.unrefreshed = Array(Set(timings.unrefreshed).union(unverifiable)).sorted()
                 for index in due {
-                    pendingRecapture[index] = dissolved.contains(index) ? nil : current + redrawSettleDelay
+                    pendingRecapture[index] = dissolved.contains(index) || unverifiable.contains(index) ? nil : current + redrawSettleDelay
                 }
             }
         }
@@ -746,10 +752,10 @@ final class AnimatedReflowOperation<Window: WindowType>: Operation, @unchecked S
 
         // Slow renderers get one more moment before the final attempt; whatever still has not redrawn lingers at the handoff.
         sleep(redrawSettleDelay)
-        let (group, dissolved) = dissolveToFreshCaptures(animator, participants, indices: recapture.sorted(), duration: minimumDissolveDuration, isFinalAttempt: true)
+        let (group, dissolved, _) = dissolveToFreshCaptures(animator, participants, indices: recapture.sorted(), duration: minimumDissolveDuration, isFinalAttempt: true)
         refinements.append(contentsOf: [group].compactMap { $0 })
         timings.recaptured += dissolved.count
-        timings.unrefreshed = recapture.subtracting(dissolved).sorted()
+        timings.unrefreshed = Array(Set(timings.unrefreshed).union(recapture.subtracting(dissolved))).sorted()
         return refinements
     }
 
@@ -887,7 +893,8 @@ final class AnimatedReflowOperation<Window: WindowType>: Operation, @unchecked S
      Only an image whose pixel size matches the size the application accepted is used; a window whose application has not
      finished redrawing keeps its old image and is reported back so the caller can try again.
 
-     - Returns: A group that empties when the dissolve has finished, or `nil` if nothing was dissolved, and the indices that received a fresh image.
+     - Returns: A group that empties when the dissolve has finished, or `nil` if nothing was dissolved; the indices that received a
+       fresh image; and the indices whose captures cannot be verified and so are never dissolved mid-glide.
      */
     private func dissolveToFreshCaptures(
         _ animator: SnapshotAnimating,
@@ -895,14 +902,24 @@ final class AnimatedReflowOperation<Window: WindowType>: Operation, @unchecked S
         indices: [Int],
         duration: TimeInterval,
         isFinalAttempt: Bool
-    ) -> (DispatchGroup?, Set<Int>) {
-        let requests = indices.map { WindowCaptureRequest(windowID: participants[$0].window.cgID(), frame: participants[$0].target) }
+    ) -> (DispatchGroup?, Set<Int>, Set<Int>) {
+        // A capture that cannot reveal a stale surface could dissolve the proxy into old content; such windows blend into the
+        // real window at the handoff instead.
+        let allRequests = indices.map { WindowCaptureRequest(windowID: participants[$0].window.cgID(), frame: participants[$0].target) }
+        let unverifiable = Set(zip(indices, allRequests).filter { !captureIsVerifiable($0.1) }.map { $0.0 })
+        let indices = indices.filter { !unverifiable.contains($0) }
+        let requests = allRequests.filter { captureIsVerifiable($0) }
+
+        guard !indices.isEmpty else {
+            return (nil, [], unverifiable)
+        }
+
         guard let captureImages = captureImages, let fresh = captureImages(requests), fresh.count == indices.count else {
             if isFinalAttempt {
                 let pids = indices.map { String(participants[$0].pid) }.joined(separator: ", ")
                 os_log("Animated reflow: recapture failed for pids %{public}s", log: animationLog, type: .info, pids)
             }
-            return (nil, [])
+            return (nil, [], unverifiable)
         }
 
         var images = [CGImage?](repeating: nil, count: participants.count)
@@ -930,7 +947,7 @@ final class AnimatedReflowOperation<Window: WindowType>: Operation, @unchecked S
         }
 
         guard !dissolved.isEmpty else {
-            return (nil, [])
+            return (nil, [], unverifiable)
         }
 
         let group = DispatchGroup()
@@ -940,7 +957,7 @@ final class AnimatedReflowOperation<Window: WindowType>: Operation, @unchecked S
                 group.leave()
             }
         }
-        return (group, dissolved)
+        return (group, dissolved, unverifiable)
     }
 
     /**

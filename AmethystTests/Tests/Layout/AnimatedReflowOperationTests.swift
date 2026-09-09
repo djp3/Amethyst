@@ -149,7 +149,8 @@ class AnimatedReflowOperationTests: QuickSpec {
         capture: @escaping ([WindowCaptureRequest]) -> [CGImage]?,
         backdrop: ((CGRect, [CGWindowID]) -> CGImage?)? = nil,
         screenID: String? = nil,
-        writesInline: Bool = true
+        writesInline: Bool = true,
+        verifiable: @escaping (WindowCaptureRequest) -> Bool = { _ in true }
     ) -> AnimatedReflowOperation<TestWindow> {
         return AnimatedReflowOperation(
             frameAssignmentOperations: fixture.operations,
@@ -157,6 +158,7 @@ class AnimatedReflowOperationTests: QuickSpec {
             frameInterval: frameInterval,
             writesInline: writesInline,
             captureImages: capture,
+            captureIsVerifiable: verifiable,
             captureBackdrop: backdrop,
             makeSnapshotAnimator: { animator },
             parkingOrigin: { self.parkingOrigin },
@@ -598,6 +600,31 @@ class AnimatedReflowOperationTests: QuickSpec {
                 expect(animator.crossfadeImages[1][1]?.width) == Int(fixture.operations[1].frameAssignment.finalFrame.width)
                 expect(animator.finishCalled).to(beTrue())
                 expect(animator.lingering).to(beEmpty())
+            }
+
+            it("does not dissolve a window whose capture cannot be verified and lets its proxy linger instead") {
+                let fixture = self.makeFixture(startFrames: startFrames, targetFrames: targetFrames)
+                let clock = FakeClock()
+                let animator = FakeSnapshotAnimator()
+                animator.completesImmediately = false
+                let captureCurrent: ([WindowCaptureRequest]) -> [CGImage]? = { requests in
+                    requests.map { request in
+                        let window = fixture.windows.first { $0.cgID() == request.windowID }!
+                        return AnimatedReflowOperationTests.makeImage(width: Int(window.frame().width), height: Int(window.frame().height))
+                    }
+                }
+                // Window 1 overhangs the display, so its recapture would come back scaled to size whether or not it has redrawn.
+                let overhanging = fixture.windows[1].cgID()
+                let operation = self.makeSnapshotOperation(fixture, clock: clock, animator: animator, capture: captureCurrent, backdrop: { _, _ in
+                    AnimatedReflowOperationTests.makeImage(width: 4, height: 4)
+                }, verifiable: { $0.windowID != overhanging })
+
+                operation.main()
+
+                expect(animator.crossfadeImages.count) == 1
+                expect(animator.crossfadeImages[0][0]).toNot(beNil())
+                expect(animator.crossfadeImages[0][1]).to(beNil())
+                expect(animator.lingering) == [1]
             }
 
             it("lets a proxy linger at the handoff when its window never redraws") {
