@@ -293,7 +293,7 @@ class AnimatedReflowOperationTests: QuickSpec {
                     proceed.wait()
                     return decision
                 }
-                let writer = ApplicationFrameWriter<TestWindow>(pid: 1, group: group, inline: false, now: { 0 }, shouldApply: holdUntilHandedOff)
+                let writer = ApplicationFrameWriter<TestWindow>(pid: 1, group: group, inline: false, now: { 0 }, beginWrite: holdUntilHandedOff)
 
                 writer.write([0: makeWrite(window, xPosition: 1)])
                 expect(checked.wait(timeout: .now() + 2)) == .success
@@ -505,6 +505,49 @@ class AnimatedReflowOperationTests: QuickSpec {
                 registry.release([1, 2], for: "external")
                 expect(registry.screenID(for: 1)).to(beNil())
                 expect(registry.screenID(for: 2)).to(beNil())
+            }
+
+            it("refuses a write to a window that was handed off and reports where it was headed") {
+                let registry = AnimatingWindows()
+                let target = CGRect(x: 10, y: 20, width: 300, height: 400)
+                registry.claim([1], for: "external", targets: [1: target])
+                expect(registry.beginWrite(1, for: "external")).to(beTrue())
+                registry.endWrite(1)
+                expect(registry.beginWrite(1, for: "builtin")).to(beFalse())
+
+                expect(registry.handOff([1])) == [1: target]
+                expect(registry.beginWrite(1, for: "external")).to(beFalse())
+                expect(registry.screenID(for: 1)).to(beNil())
+                expect(registry.handOff([1])).to(beEmpty())
+            }
+
+            it("waits for a write in flight before handing a window off, but not forever") {
+                let registry = AnimatingWindows()
+                let target = CGRect(x: 10, y: 20, width: 300, height: 400)
+                registry.claim([1], for: "external", targets: [1: target])
+                expect(registry.beginWrite(1, for: "external")).to(beTrue())
+                DispatchQueue.global().asyncAfter(deadline: .now() + 0.1) { registry.endWrite(1) }
+
+                var start = Date()
+                expect(registry.handOff([1])) == [1: target]
+                expect(Date().timeIntervalSince(start)) >= 0.09
+                expect(Date().timeIntervalSince(start)) < 0.9
+
+                // A write that never ends must not hold the throw hostage.
+                registry.claim([2], for: "external")
+                expect(registry.beginWrite(2, for: "external")).to(beTrue())
+                start = Date()
+                registry.handOff([2], timeout: 0.05)
+                expect(Date().timeIntervalSince(start)) >= 0.04
+                expect(Date().timeIntervalSince(start)) < 0.9
+                expect(registry.screenID(for: 2)).to(beNil())
+            }
+
+            it("forgets a window's destination when its screen releases it") {
+                let registry = AnimatingWindows()
+                registry.claim([1], for: "external", targets: [1: CGRect(x: 1, y: 2, width: 3, height: 4)])
+                registry.release([1], for: "external")
+                expect(registry.handOff([1])).to(beEmpty())
             }
 
             it("reports only the windows an animation is moving, so other windows' move notifications count as gestures") {
@@ -955,10 +998,15 @@ class AnimatedReflowOperationTests: QuickSpec {
                     finished.leave()
                 }
                 self.letMainThreadRun(attempts: 4) { false }
-                AnimatingWindows.shared.handOff([thrown.cgID()])
+                let handedOff = AnimatingWindows.shared.handOff([thrown.cgID()])
+
+                // The hand-off waited for the park write to land and reported where the window was headed, so the throw can
+                // put it back on screen first.
+                expect(thrown.frameHistory.count) == 1
+                expect(handedOff[thrown.cgID()]) == fixture.operations[1].frameAssignment.finalFrame
                 self.letMainThreadRun(attempts: 100) { finished.wait(timeout: .now()) == .success }
 
-                // The park had already landed; the resize queued behind it must not, nor anything after it.
+                // The resize queued behind the park must not land, nor anything after it.
                 expect(thrown.frameHistory.count) == 1
                 expect(fixture.windows[0].frame()) == fixture.operations[0].frameAssignment.finalFrame
                 expect(animator.finishCalled).to(beTrue())

@@ -103,18 +103,31 @@ final class ApplicationFrameWriter<Window: WindowType> {
     private let queue: DispatchQueue?
     private let group: DispatchGroup
     private let now: () -> TimeInterval
-    private let shouldApply: (Window) -> Bool
+    private let beginWrite: (Window) -> Bool
+    private let endWrite: (Window) -> Void
     private let lock = NSLock()
     private var pending: [Int: Write] = [:]
     private var isDraining = false
     private var statistics = Statistics()
 
-    /// - Parameter shouldApply: Asked immediately before each frame is written, so a window that may no longer be touched, because it was handed to another screen while its frame waited its turn, is left alone.
-    init(pid: pid_t, group: DispatchGroup, inline: Bool, now: @escaping () -> TimeInterval, shouldApply: @escaping (Window) -> Bool = { _ in true }) {
+    /**
+     - Parameters:
+         - beginWrite: Asked immediately before each frame is written; answering `false` leaves the window alone, because it was handed to another screen while its frame waited its turn.
+         - endWrite: Told once the frame has been written, so whoever is waiting to take the window over knows it is free.
+     */
+    init(
+        pid: pid_t,
+        group: DispatchGroup,
+        inline: Bool,
+        now: @escaping () -> TimeInterval,
+        beginWrite: @escaping (Window) -> Bool = { _ in true },
+        endWrite: @escaping (Window) -> Void = { _ in }
+    ) {
         self.pid = pid
         self.group = group
         self.now = now
-        self.shouldApply = shouldApply
+        self.beginWrite = beginWrite
+        self.endWrite = endWrite
         self.queue = inline ? nil : DispatchQueue(label: "Amethyst.ApplicationFrameWriter.\(pid)", qos: .userInteractive)
     }
 
@@ -190,13 +203,14 @@ final class ApplicationFrameWriter<Window: WindowType> {
             for write in batch.values {
                 // Ownership was checked when the frame was queued; check again now, since the window may have been handed to
                 // another screen while this frame waited behind a slow application.
-                guard shouldApply(write.window) else {
+                guard beginWrite(write.window) else {
                     continue
                 }
 
                 let start = now()
                 write.window.setAnimationFrame(write.frame, includingSize: write.includingSize)
                 let elapsed = now() - start
+                endWrite(write.window)
 
                 lock.lock()
                 statistics.applied += 1
@@ -215,12 +229,20 @@ final class ApplicationFrameWriter<Window: WindowType> {
 final class AnimatingWindows {
     static let shared = AnimatingWindows()
 
-    private let lock = NSLock()
+    /// Guards every table below. A condition rather than a plain lock so a hand-off can wait for writes in flight to end.
+    private let lock = NSCondition()
     private var screenIDsByWindow: [CGWindowID: String] = [:]
+    /// Where the animation is taking each claimed window, so a hand-off can put a window still parked off-screen somewhere sane.
+    private var targetsByWindow: [CGWindowID: CGRect] = [:]
+    /// How many frame writes are being applied to each window right now.
+    private var writesInFlight: [CGWindowID: Int] = [:]
     private var lastSeenFrames: [CGWindowID: (frame: CGRect, time: TimeInterval)] = [:]
 
     /// How long a cancelled animation's last picture positions stay relevant to a follow-up animation.
     static let lastSeenFrameLifetime: TimeInterval = 1.0
+
+    /// How long a hand-off waits for a slow application to finish applying a frame already being written.
+    static let handOffTimeout: TimeInterval = 1.0
 
     /**
      Remembers where a cancelled animation last showed each window, so the animation that replaces it can start its pictures
@@ -242,25 +264,62 @@ final class AnimatingWindows {
         return lastSeenFrames.removeValue(forKey: windowID)?.frame
     }
 
-    func claim(_ windowIDs: [CGWindowID], for screenID: String) {
+    /// Claims the windows for `screenID`, recording where its animation is taking each one.
+    func claim(_ windowIDs: [CGWindowID], for screenID: String, targets: [CGWindowID: CGRect] = [:]) {
         lock.lock()
         for windowID in windowIDs {
             screenIDsByWindow[windowID] = screenID
+            targetsByWindow[windowID] = targets[windowID]
         }
         lock.unlock()
     }
 
     /**
-     Drops any claim on the windows, whichever screen holds it.
+     Registers a frame write about to be applied to the window on behalf of `screenID`.
 
-     Called when Amethyst itself relocates a window to another screen or Space: the animation that was moving it must stop touching it, and the destination screen must be free to adopt it at once.
+     - Returns: `false`, registering nothing, if the window is no longer that screen's to move; the write must then be skipped.
      */
-    func handOff(_ windowIDs: [CGWindowID]) {
+    func beginWrite(_ windowID: CGWindowID, for screenID: String) -> Bool {
         lock.lock()
+        defer { lock.unlock() }
+        guard screenIDsByWindow[windowID] == screenID else {
+            return false
+        }
+        writesInFlight[windowID, default: 0] += 1
+        return true
+    }
+
+    /// Records that a write registered with `beginWrite` has been applied, releasing any hand-off waiting for it.
+    func endWrite(_ windowID: CGWindowID) {
+        lock.lock()
+        if let count = writesInFlight[windowID] {
+            writesInFlight[windowID] = count > 1 ? count - 1 : nil
+        }
+        lock.broadcast()
+        lock.unlock()
+    }
+
+    /**
+     Drops any claim on the windows, whichever screen holds it, and waits for writes already being applied to them to finish.
+
+     Called when Amethyst itself relocates a window to another screen or Space: the animation that was moving it must stop touching it, and the destination screen must be free to adopt it at once. Once this returns, no frame the animation queued can land on the window any more.
+
+     - Returns: Where the animation was taking each window it had claimed, so a window still parked beyond every display can be put back on its screen before it is moved.
+     */
+    @discardableResult
+    func handOff(_ windowIDs: [CGWindowID], timeout: TimeInterval = AnimatingWindows.handOffTimeout) -> [CGWindowID: CGRect] {
+        lock.lock()
+        defer { lock.unlock() }
+
+        var targets: [CGWindowID: CGRect] = [:]
         for windowID in windowIDs {
             screenIDsByWindow[windowID] = nil
+            targets[windowID] = targetsByWindow.removeValue(forKey: windowID)
         }
-        lock.unlock()
+
+        let deadline = Date(timeIntervalSinceNow: timeout)
+        while windowIDs.contains(where: { writesInFlight[$0] != nil }) && lock.wait(until: deadline) {}
+        return targets
     }
 
     /// Releases windows claimed for `screenID`; claims made since by another screen are left alone.
@@ -268,6 +327,7 @@ final class AnimatingWindows {
         lock.lock()
         for windowID in windowIDs where screenIDsByWindow[windowID] == screenID {
             screenIDsByWindow[windowID] = nil
+            targetsByWindow[windowID] = nil
         }
         lock.unlock()
     }
@@ -445,7 +505,8 @@ final class AnimatedReflowOperation<Window: WindowType>: Operation, @unchecked S
         var participants = prepareParticipants(in: windowSet)
         let windowIDs = participants.map { $0.window.cgID() }
         if let screenID = screenID {
-            AnimatingWindows.shared.claim(windowIDs, for: screenID)
+            let targets = Dictionary(participants.map { ($0.window.cgID(), $0.target) }, uniquingKeysWith: { first, _ in first })
+            AnimatingWindows.shared.claim(windowIDs, for: screenID, targets: targets)
         }
 
         var snapshotAnimator: SnapshotAnimating?
@@ -1136,11 +1197,31 @@ final class AnimatedReflowOperation<Window: WindowType>: Operation, @unchecked S
             return writer
         }
 
-        let writer = ApplicationFrameWriter<Window>(pid: pid, group: writerGroup, inline: writesInline, now: now) { [weak self] window in
-            self?.owns(window) ?? false
-        }
+        let writer = ApplicationFrameWriter<Window>(
+            pid: pid,
+            group: writerGroup,
+            inline: writesInline,
+            now: now,
+            beginWrite: { [weak self] window in self?.beginWrite(to: window) ?? false },
+            endWrite: { [weak self] window in self?.endWrite(to: window) }
+        )
         writers[pid] = writer
         return writer
+    }
+
+    /// Registers a frame about to land on the window, unless the window is no longer this operation's to move.
+    private func beginWrite(to window: Window) -> Bool {
+        guard let screenID = screenID else {
+            return true
+        }
+        return AnimatingWindows.shared.beginWrite(window.cgID(), for: screenID)
+    }
+
+    private func endWrite(to window: Window) {
+        guard screenID != nil else {
+            return
+        }
+        AnimatingWindows.shared.endWrite(window.cgID())
     }
 
     /// Waits for every application to apply its newest frame. Returns `false` if a slow application timed out.

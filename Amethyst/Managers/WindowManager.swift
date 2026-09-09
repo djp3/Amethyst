@@ -934,6 +934,24 @@ extension WindowManager {
 
 // MARK: Window Transition
 extension WindowManager: WindowTransitionTarget {
+    /**
+     Puts a window an animation had parked beyond every display back where that animation was taking it.
+
+     A move to another screen or Space must start from a window that is actually on screen: Silica moves a window between Spaces by dragging it, which cannot take hold of one parked out of sight, and a window left there would belong to no screen and never be tiled again.
+     */
+    private func unpark(_ window: Window, handedOff targets: [CGWindowID: CGRect]) {
+        guard let target = targets[window.cgID()] else {
+            return
+        }
+
+        let frame = window.frame()
+        guard !ActiveDisplays.bounds().contains(where: { $0.intersects(frame) }) else {
+            return
+        }
+
+        window.setAnimationFrame(CGRect(origin: target.origin, size: frame.size), includingSize: false)
+    }
+
     func executeTransition(_ transition: WindowTransition<Window>) {
         switch transition {
         case let .switchWindows(window, otherWindow):
@@ -946,7 +964,7 @@ extension WindowManager: WindowTransitionTarget {
         case let .moveWindowToScreen(window, screen):
             let currentScreen = window.screen()
             // A deliberate move: any animation still moving this window must let go, and the new screen adopts it at once.
-            AnimatingWindows.shared.handOff([window.cgID()])
+            unpark(window, handedOff: AnimatingWindows.shared.handOff([window.cgID()]))
             window.moveScaled(to: screen)
             if currentScreen != nil {
                 distributeEventToScreen(screen, change: .remove(window: window))
@@ -969,7 +987,7 @@ extension WindowManager: WindowTransitionTarget {
             }
             distributeEventToScreen(screen, change: .remove(window: window))
             eventQueue.append(PendingEvent(screen: targetScreen, event: .add(window: window)))
-            AnimatingWindows.shared.handOff([window.cgID()])
+            unpark(window, handedOff: AnimatingWindows.shared.handOff([window.cgID()]))
             window.move(toSpaceAtIndex: UInt(spaceIndex + 1))
             if targetScreen.screenID() != screen.screenID() {
                 // necessary to set frame here as window is expected to be at origin relative to targe screen when moved, can be improved.
