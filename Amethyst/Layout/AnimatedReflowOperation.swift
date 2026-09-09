@@ -197,6 +197,30 @@ final class AnimatingWindows {
 
     private let lock = NSLock()
     private var screenIDsByWindow: [CGWindowID: String] = [:]
+    private var lastSeenFrames: [CGWindowID: (frame: CGRect, time: TimeInterval)] = [:]
+
+    /// How long a cancelled animation's last picture positions stay relevant to a follow-up animation.
+    static let lastSeenFrameLifetime: TimeInterval = 1.0
+
+    /**
+     Remembers where a cancelled animation last showed each window, so the animation that replaces it can start its pictures
+     there rather than from the windows' real frames. The real windows are left at valid tiles regardless.
+     */
+    func recordLastSeenFrames(_ frames: [CGWindowID: CGRect], at time: TimeInterval) {
+        lock.lock()
+        for (windowID, frame) in frames {
+            lastSeenFrames[windowID] = (frame, time)
+        }
+        lock.unlock()
+    }
+
+    /// Where the window's picture was last seen, if a cancelled animation recorded it recently. Consumed on read.
+    func takeLastSeenFrame(for windowID: CGWindowID, at time: TimeInterval) -> CGRect? {
+        lock.lock()
+        defer { lock.unlock() }
+        lastSeenFrames = lastSeenFrames.filter { time - $0.value.time <= AnimatingWindows.lastSeenFrameLifetime }
+        return lastSeenFrames.removeValue(forKey: windowID)?.frame
+    }
 
     func claim(_ windowIDs: [CGWindowID], for screenID: String) {
         lock.lock()
@@ -260,6 +284,8 @@ final class AnimatedReflowOperation<Window: WindowType>: Operation, @unchecked S
         let window: Window
         let pid: pid_t
         let start: CGRect
+        /// Where the window's picture starts: where a cancelled animation last showed it, if that was a moment ago, else its real frame.
+        let visualStart: CGRect
         /// Where the window should end up. Corrected mid-animation if the application refuses the assigned size.
         var target: CGRect
         let resizable: Bool
@@ -516,6 +542,7 @@ final class AnimatedReflowOperation<Window: WindowType>: Operation, @unchecked S
                     window: window,
                     pid: window.pid(),
                     start: start,
+                    visualStart: AnimatingWindows.shared.takeLastSeenFrame(for: window.cgID(), at: now()) ?? start,
                     target: target,
                     resizable: window.isResizable(),
                     lastIssued: start
@@ -562,7 +589,7 @@ final class AnimatedReflowOperation<Window: WindowType>: Operation, @unchecked S
         }
 
         let proxies = zip(participants, images).map { participant, image in
-            SnapshotProxy(image: image, start: participant.start, target: participant.target)
+            SnapshotProxy(image: image, start: participant.visualStart, target: participant.target)
         }
 
         var animator: SnapshotAnimating?
@@ -902,30 +929,50 @@ final class AnimatedReflowOperation<Window: WindowType>: Operation, @unchecked S
         return (group, dissolved)
     }
 
-    /// Puts every real window where its proxy currently appears so the next reflow continues from what the user sees, then removes the overlay.
+    /**
+     Leaves every real window at a valid tile, remembers where its proxy was last seen so a follow-up animation can start there,
+     and removes the overlay.
+
+     The reflow that cancelled this operation may return without doing anything, for instance when tiling was just turned off,
+     so the windows must not be left at mid-animation positions. Windows re-laid out in place are already at their tiles.
+     */
     private func abandonSnapshotAnimation(_ animator: SnapshotAnimating, _ participants: inout [Participant]) -> SnapshotOutcome {
         var currentFrames: [CGRect] = []
         runOnMainSync {
             currentFrames = animator.presentationFrames()
         }
 
-        writers.values.forEach { $0.discardPending() }
-
-        var writes: Writes = [:]
-        for index in participants.indices {
-            let visible = index < currentFrames.count ? FrameInterpolation.readable(currentFrames[index]) ?? participants[index].target : participants[index].target
-            let frame = CGRect(origin: visible.origin, size: participants[index].lastIssued.size)
-            writes[participants[index].pid, default: [:]][index] = .init(window: participants[index].window, frame: frame, includingSize: false)
-            participants[index].lastIssued = frame
+        var lastSeen: [CGWindowID: CGRect] = [:]
+        for index in participants.indices where index < currentFrames.count {
+            if let frame = FrameInterpolation.readable(currentFrames[index]) {
+                lastSeen[participants[index].window.cgID()] = frame
+            }
         }
-        dispatch(writes)
-        waitForWriters(timeout: 0.3)
+        AnimatingWindows.shared.recordLastSeenFrames(lastSeen, at: now())
+
+        writers.values.forEach { $0.discardPending() }
+        placeAtTargets(&participants)
 
         runOnMainSync {
             animator.cancel()
         }
 
         return .cancelled
+    }
+
+    /// Puts every window at its target's position, keeping whatever size it has; skips windows already there.
+    private func placeAtTargets(_ participants: inout [Participant]) {
+        var writes: Writes = [:]
+        for index in participants.indices {
+            let frame = CGRect(origin: participants[index].target.origin, size: participants[index].lastIssued.size)
+            guard frame != participants[index].lastIssued else {
+                continue
+            }
+            writes[participants[index].pid, default: [:]][index] = .init(window: participants[index].window, frame: frame, includingSize: false)
+            participants[index].lastIssued = frame
+        }
+        dispatch(writes)
+        waitForWriters(timeout: 0.3)
     }
 
     // MARK: - Accessibility strategy
@@ -964,7 +1011,7 @@ final class AnimatedReflowOperation<Window: WindowType>: Operation, @unchecked S
             }
 
             guard !isCancelled else {
-                abandonPendingWrites()
+                abandonPendingWrites(&participants)
                 return false
             }
 
@@ -992,7 +1039,7 @@ final class AnimatedReflowOperation<Window: WindowType>: Operation, @unchecked S
             }
 
             if isCancelled {
-                abandonPendingWrites()
+                abandonPendingWrites(&participants)
                 return false
             }
         }
@@ -1002,9 +1049,11 @@ final class AnimatedReflowOperation<Window: WindowType>: Operation, @unchecked S
         return true
     }
 
-    private func abandonPendingWrites() {
+    /// Drops frames not yet applied and leaves every window at its tile, since the reflow that cancelled this glide may not move it.
+    private func abandonPendingWrites(_ participants: inout [Participant]) {
         writers.values.forEach { $0.discardPending() }
         waitForWriters()
+        placeAtTargets(&participants)
     }
 
     // MARK: - Ownership

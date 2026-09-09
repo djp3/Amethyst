@@ -357,15 +357,22 @@ class AnimatedReflowOperationTests: QuickSpec {
                 expect(livePanels()) == 1
 
                 // The reflow operation drops its reference as soon as it has asked for the fade.
+                weak var stillAlive = overlay
                 onMain { overlay?.finish(fadeDuration: 0.02, lingering: [], lingerDuration: 0.02) {} }
                 overlay = nil
 
+                // The pending fade must keep the overlay alive by itself; with a weak reference it would be gone already.
+                expect(stillAlive).toNot(beNil())
+
+                // Then the fade, or its fallback timer, takes the panel down on the main run loop, and once the fallback
+                // has fired nothing holds the overlay any more.
                 var attempts = 0
-                while livePanels() > 0 && attempts < 40 {
+                while (livePanels() > 0 || stillAlive != nil) && attempts < 100 {
                     onMain { RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.05)) }
                     attempts += 1
                 }
                 expect(livePanels()) == 0
+                expect(stillAlive).to(beNil())
             }
         }
 
@@ -757,7 +764,7 @@ class AnimatedReflowOperationTests: QuickSpec {
                 expect(animator.cancelCalled).to(beTrue())
             }
 
-            it("leaves windows where the user saw them when cancelled mid-glide") {
+            it("leaves windows at their tiles when cancelled mid-glide and lets the next animation start from where the pictures were") {
                 let fixture = self.makeFixture(startFrames: startFrames, targetFrames: targetFrames)
                 let clock = FakeClock()
                 let animator = FakeSnapshotAnimator()
@@ -775,9 +782,31 @@ class AnimatedReflowOperationTests: QuickSpec {
 
                 expect(animator.cancelCalled).to(beTrue())
                 expect(animator.finishCalled).to(beFalse())
+                // The reflow that cancelled us may do nothing, so the real windows must already be at valid tiles.
                 let moved = fixture.windows[1]
-                expect(moved.frame().origin) == midway[1].origin
-                expect(moved.frame()) != fixture.operations[1].frameAssignment.finalFrame
+                expect(moved.frame().origin) == fixture.operations[1].frameAssignment.finalFrame.origin
+
+                // A follow-up animation moving the same windows back starts its pictures where the user last saw them.
+                let followUpAnimator = FakeSnapshotAnimator()
+                let followUpOperations = fixture.operations.enumerated().map { index, original -> FrameAssignmentOperation<TestWindow> in
+                    let assignment = original.frameAssignment
+                    let reversed = FrameAssignment(frame: startFrames[index], window: assignment.window, screenFrame: assignment.screenFrame, resizeRules: assignment.resizeRules)
+                    return FrameAssignmentOperation(frameAssignment: reversed, windowSet: original.windowSet)
+                }
+                let followUpOperation = AnimatedReflowOperation(
+                    frameAssignmentOperations: followUpOperations,
+                    duration: self.duration,
+                    frameInterval: self.frameInterval,
+                    writesInline: true,
+                    captureImages: captureAll,
+                    makeSnapshotAnimator: { followUpAnimator },
+                    parkingOrigin: { self.parkingOrigin },
+                    now: clock.now,
+                    sleep: clock.sleep
+                )
+                followUpOperation.main()
+
+                expect(followUpAnimator.shownProxies.map { $0.start }) == midway
             }
         }
 
@@ -901,8 +930,8 @@ class AnimatedReflowOperationTests: QuickSpec {
                 operation.main()
 
                 expect(operation.tickCount) == 3
-                // The moving window is caught mid-glide and never receives the settle pass.
-                expect(fixture.windows[1].frame()) != fixture.operations[1].frameAssignment.finalFrame
+                // The glide stops, but the window is left at its tile rather than mid-way, since no reflow may follow.
+                expect(fixture.windows[1].frame()) == fixture.operations[1].frameAssignment.finalFrame
             }
 
             it("keeps the focused window on screen") {
