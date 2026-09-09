@@ -1040,8 +1040,10 @@ final class AnimatedReflowOperation<Window: WindowType>: Operation, @unchecked S
             currentFrames = animator.presentationFrames()
         }
 
+        // Only windows still ours: a window thrown elsewhere mid-glide had its picture hidden where it was, and the screen
+        // that adopted it must not start that picture from a stale spot on this one.
         var lastSeen: [CGWindowID: CGRect] = [:]
-        for index in participants.indices where index < currentFrames.count {
+        for index in participants.indices where index < currentFrames.count && owns(participants[index].window) {
             if let frame = FrameInterpolation.readable(currentFrames[index]) {
                 lastSeen[participants[index].window.cgID()] = frame
             }

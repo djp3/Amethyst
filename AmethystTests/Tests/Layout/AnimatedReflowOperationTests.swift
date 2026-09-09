@@ -1046,6 +1046,31 @@ class AnimatedReflowOperationTests: QuickSpec {
                 expect(animator.finishCalled).to(beTrue())
             }
 
+            it("forgets where a handed-off window's picture was when cancelled") {
+                let fixture = self.makeFixture(startFrames: startFrames, targetFrames: targetFrames)
+                let clock = FakeClock()
+                let animator = FakeSnapshotAnimator()
+                animator.completesImmediately = false
+                animator.framesToPresent = [
+                    CGRect(x: 0, y: 0, width: 500, height: 1000),
+                    CGRect(x: 750, y: 0, width: 1500, height: 1000)
+                ]
+                let thrown = fixture.windows[1]
+                var operation: AnimatedReflowOperation<TestWindow>!
+                // The user throws window 1 elsewhere as the glide starts, and a new reflow cancels right after.
+                animator.onAnimate = {
+                    AnimatingWindows.shared.handOff([thrown.cgID()])
+                    operation.cancel()
+                }
+                operation = self.makeSnapshotOperation(fixture, clock: clock, animator: animator, capture: captureAll, screenID: "source")
+
+                operation.main()
+
+                // The window still ours starts its next picture where it was; the thrown one must not be remembered here.
+                expect(AnimatingWindows.shared.takeLastSeenFrame(for: fixture.windows[0].cgID(), at: clock.now())) == animator.framesToPresent[0]
+                expect(AnimatingWindows.shared.takeLastSeenFrame(for: thrown.cgID(), at: clock.now())).to(beNil())
+            }
+
             it("lets go of a window Amethyst moves elsewhere mid-glide") {
                 let fixture = self.makeFixture(startFrames: startFrames, targetFrames: targetFrames)
                 let clock = FakeClock()
