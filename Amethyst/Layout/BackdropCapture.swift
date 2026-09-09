@@ -19,36 +19,35 @@ import Foundation
 final class BackdropCapturer: @unchecked Sendable {
     static let shared = BackdropCapturer()
 
-    /// Guards `content` and `isRefreshing`. A queue rather than a lock so the refresh task can update state without blocking.
+    /// Guards `content` and `fetch`. A queue rather than a lock so the fetch task can update state without blocking.
     private let stateQueue = DispatchQueue(label: "Amethyst.BackdropCapturer.state")
     private var content: SCShareableContent?
-    private var isRefreshing = false
+    private var fetch: Task<SCShareableContent?, Never>?
 
     /// Fetches the current window list in the background. Exclusion needs ScreenCaptureKit's own window objects, which take tens of milliseconds to enumerate.
     func refresh() {
-        let shouldRefresh: Bool = stateQueue.sync {
-            guard !isRefreshing else {
-                return false
-            }
-            isRefreshing = true
-            return true
-        }
+        _ = beginFetch()
+    }
 
-        guard shouldRefresh else {
-            return
-        }
-
-        Task { [weak self] in
-            let content = try? await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
-            guard let self = self else {
-                return
+    /// The fetch already under way, or a new one. There is never more than one at a time, and whichever it is caches its result when it completes, whether or not anyone is still waiting for it.
+    private func beginFetch() -> Task<SCShareableContent?, Never> {
+        return stateQueue.sync {
+            if let fetch = fetch {
+                return fetch
             }
-            self.stateQueue.async {
-                if let content = content {
-                    self.content = content
+
+            let fetch = Task { [weak self] () -> SCShareableContent? in
+                let content = try? await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
+                self?.stateQueue.async {
+                    if let content = content {
+                        self?.content = content
+                    }
+                    self?.fetch = nil
                 }
-                self.isRefreshing = false
+                return content
             }
+            self.fetch = fetch
+            return fetch
         }
     }
 
@@ -60,22 +59,20 @@ final class BackdropCapturer: @unchecked Sendable {
             return cached
         }
 
+        let fetch = beginFetch()
         let finished = DispatchSemaphore(value: 0)
         let result = Box<SCShareableContent>()
 
         Task {
-            result.value = try? await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
+            result.value = await fetch.value
             finished.signal()
         }
 
-        guard finished.wait(timeout: .now() + timeout) == .success, let content = result.value else {
+        guard finished.wait(timeout: .now() + timeout) == .success else {
             return nil
         }
 
-        stateQueue.async {
-            self.content = content
-        }
-        return content
+        return result.value
     }
 
     private func contains(_ content: SCShareableContent, _ windowIDs: [CGWindowID]) -> Bool {
