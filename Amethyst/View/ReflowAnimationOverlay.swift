@@ -321,7 +321,8 @@ final class ReflowAnimationOverlay: SnapshotAnimating {
         let fading = [backdropLayer].compactMap { $0 }.map { ($0, fadeDuration) } + layers.enumerated().map { ($1, lingering.contains($0) ? lingerDuration : fadeDuration) }
         for (layer, duration) in fading {
             let fade = CABasicAnimation(keyPath: "opacity")
-            fade.fromValue = 1
+            // From the current opacity, so a picture hidden earlier does not reappear for the length of the fade.
+            fade.fromValue = layer.opacity
             fade.toValue = 0
             fade.duration = duration
             fade.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
@@ -333,9 +334,11 @@ final class ReflowAnimationOverlay: SnapshotAnimating {
     }
 
     func hide(indices: [Int]) {
+        // Opacity carries no implicit animation here and leaves the picture's motion running unseen. Removing the motion
+        // instead would snap the picture to its target, fade it over Core Animation's default quarter second, and count as
+        // the end of the newest batch of motion while other pictures are still on their way.
         for index in indices where index < layers.count {
-            layers[index].removeAllAnimations()
-            layers[index].isHidden = true
+            layers[index].opacity = 0
         }
     }
 

@@ -443,6 +443,32 @@ class AnimatedReflowOperationTests: QuickSpec {
                 expect(correctionCompletions) == 1
             }
 
+            it("hides a proxy without ending the glide of the others") {
+                let image = AnimatedReflowOperationTests.makeImage(width: 10, height: 10)
+                let proxies = [
+                    SnapshotProxy(image: image, start: CGRect(x: 10, y: 60, width: 40, height: 40), target: CGRect(x: 80, y: 60, width: 40, height: 40)),
+                    SnapshotProxy(image: image, start: CGRect(x: 10, y: 160, width: 40, height: 40), target: CGRect(x: 80, y: 160, width: 40, height: 40))
+                ]
+                var glideCompletions = 0
+                let overlay: ReflowAnimationOverlay = self.onMain {
+                    let screenFrame = FlippedCoordinates.flippedRect(fromAppKit: NSScreen.screens[0].frame, primaryScreenHeight: FlippedCoordinates.primaryScreenHeight)
+                    let overlay = ReflowAnimationOverlay()
+                    overlay.show(proxies: proxies, screenFrame: screenFrame, backdrop: nil)
+                    overlay.animate(duration: 5) { glideCompletions += 1 }
+                    // Correcting the first picture alone starts a newer batch of motion that holds only it.
+                    overlay.retarget(frames: [CGRect(x: 90, y: 60, width: 40, height: 40), nil], duration: 5, completion: nil)
+                    return overlay
+                }
+
+                // Hiding that picture, as happens when its window is thrown elsewhere, must not end the glide for the other.
+                self.onMain { overlay.hide(indices: [0]) }
+                self.letMainThreadRun(attempts: 6) { false }
+                expect(glideCompletions) == 0
+
+                self.onMain { overlay.cancel() }
+                expect(glideCompletions) == 1
+            }
+
             it("calls a pending completion when the overlay finishes") {
                 let image = AnimatedReflowOperationTests.makeImage(width: 10, height: 10)
                 let proxy = SnapshotProxy(image: image, start: CGRect(x: 10, y: 60, width: 40, height: 40), target: CGRect(x: 80, y: 60, width: 40, height: 40))
