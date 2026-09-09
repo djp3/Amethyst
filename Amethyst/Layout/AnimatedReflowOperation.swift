@@ -109,11 +109,16 @@ final class ApplicationFrameWriter<Window: WindowType> {
         self.queue = inline ? nil : DispatchQueue(label: "Amethyst.ApplicationFrameWriter.\(pid)", qos: .userInteractive)
     }
 
-    /// Requests writes keyed by window. A later request for the same window supersedes an earlier one that has not been applied yet.
+    /// Requests writes keyed by window. A later request for the same window supersedes an earlier one that has not been applied yet, except that a size the earlier one carried is kept.
     func write(_ writes: [Int: Write]) {
         lock.lock()
         for (key, write) in writes {
-            pending[key] = write
+            // A position-only write always carries the size the earlier resize intended, so folding the resize into it loses nothing.
+            if let earlier = pending[key], earlier.includingSize, !write.includingSize {
+                pending[key] = Write(window: write.window, frame: write.frame, includingSize: true)
+            } else {
+                pending[key] = write
+            }
             statistics.requested += 1
         }
         let shouldStartDraining = !isDraining && !pending.isEmpty
@@ -465,6 +470,10 @@ final class AnimatedReflowOperation<Window: WindowType>: Operation, @unchecked S
         guard !isCancelled else {
             return
         }
+
+        // Nothing the writers still hold may land after the settle: drop what is queued, and wait for what is in flight.
+        writers.values.forEach { $0.discardPending() }
+        waitForWriters()
 
         // Settle: apply the exact final frames through the regular path, including focused-window peeking, except for windows
         // Amethyst has since moved elsewhere.

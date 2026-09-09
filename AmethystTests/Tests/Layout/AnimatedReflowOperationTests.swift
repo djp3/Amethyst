@@ -305,6 +305,22 @@ class AnimatedReflowOperationTests: QuickSpec {
                 expect(self.isMonotonic(window.frameHistory.map { $0.minX })).to(beTrue())
             }
 
+            it("keeps a queued resize when a later move replaces it") {
+                let window = TestWindow(element: nil)!
+                window.animationFrameDelay = 0.03
+                let group = DispatchGroup()
+                let writer = ApplicationFrameWriter<TestWindow>(pid: 1, group: group, inline: false, now: { ProcessInfo.processInfo.systemUptime })
+
+                // A move is in flight; a resize queues behind it; then another move for the same window arrives.
+                writer.write([0: makeWrite(window, xPosition: 1)])
+                Thread.sleep(forTimeInterval: 0.005)
+                writer.write([0: .init(window: window, frame: CGRect(x: 2, y: 0, width: 300, height: 200), includingSize: true)])
+                writer.write([0: .init(window: window, frame: CGRect(x: 3, y: 0, width: 300, height: 200), includingSize: false)])
+
+                expect(group.wait(timeout: .now() + 2)) == .success
+                expect(window.frame()) == CGRect(x: 3, y: 0, width: 300, height: 200)
+            }
+
             it("forgets discarded frames") {
                 let window = TestWindow(element: nil)!
                 window.animationFrameDelay = 0.03
@@ -1028,6 +1044,28 @@ class AnimatedReflowOperationTests: QuickSpec {
                     expect(frame.maxX) <= 2000
                 }
                 expect(fixture.windows[0].frame()) == CGRect(x: 900, y: 0, width: 1100, height: 1000)
+            }
+
+            it("lets no queued frame land after the settle when an application outlasts the wait") {
+                let fixture = self.makeFixture(startFrames: startFrames, targetFrames: targetFrames)
+                let slow = fixture.windows[1]
+                slow.animationFrameDelay = 0.6
+                let clock = FakeClock()
+                let operation = AnimatedReflowOperation(
+                    frameAssignmentOperations: fixture.operations,
+                    duration: self.duration,
+                    frameInterval: self.frameInterval,
+                    writesInline: false,
+                    now: clock.now,
+                    sleep: clock.sleep
+                )
+
+                operation.main()
+                Thread.sleep(forTimeInterval: 1.5)
+
+                // The settle's write must be the last thing the window received.
+                expect(slow.frameHistory.last) == fixture.operations[1].frameAssignment.finalFrame
+                expect(slow.frame()) == fixture.operations[1].frameAssignment.finalFrame
             }
 
             it("finishes immediately with no assignments") {
