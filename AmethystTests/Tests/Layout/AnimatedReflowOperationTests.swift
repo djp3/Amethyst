@@ -368,6 +368,17 @@ class AnimatedReflowOperationTests: QuickSpec {
                 expect(WindowImageCapture.displayBounds(containing: external, among: displays)) == displays[1]
                 expect(WindowImageCapture.displayBounds(containing: CGRect(x: 5000, y: 0, width: 10, height: 10), among: displays)).to(beNil())
             }
+
+            it("picks the candidate whose bounds overlap a rectangle most") {
+                let displays = [CGRect(x: 0, y: 0, width: 1000, height: 800), CGRect(x: 1000, y: 0, width: 1000, height: 800)]
+                let names = ["left", "right"]
+                let mostlyRight = CGRect(x: 900, y: 100, width: 400, height: 100)
+                let mostlyLeft = CGRect(x: 700, y: 100, width: 400, height: 100)
+                let offEveryDisplay = CGRect(x: 3000, y: 100, width: 10, height: 10)
+                expect(ActiveDisplays.mostOverlapping(mostlyRight, among: [0, 1], bounds: { displays[$0] }).map { names[$0] }) == "right"
+                expect(ActiveDisplays.mostOverlapping(mostlyLeft, among: [0, 1], bounds: { displays[$0] }).map { names[$0] }) == "left"
+                expect(ActiveDisplays.mostOverlapping(offEveryDisplay, among: [0, 1], bounds: { displays[$0] })).to(beNil())
+            }
         }
 
         describe("overlay panel") {

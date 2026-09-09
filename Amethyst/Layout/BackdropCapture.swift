@@ -96,12 +96,7 @@ final class BackdropCapturer: @unchecked Sendable {
             return nil
         }
 
-        func overlap(_ display: SCDisplay) -> CGFloat {
-            let intersection = CGDisplayBounds(display.displayID).intersection(screenFrame)
-            return intersection.isNull ? 0 : intersection.width * intersection.height
-        }
-
-        guard let display = content.displays.max(by: { overlap($0) < overlap($1) }), overlap(display) > 0 else {
+        guard let display = ActiveDisplays.mostOverlapping(screenFrame, among: content.displays, bounds: { CGDisplayBounds($0.displayID) }) else {
             return nil
         }
 
@@ -146,10 +141,6 @@ final class BackdropCapturer: @unchecked Sendable {
         }
 
         let windowsByID = Dictionary(content.windows.map { ($0.windowID, $0) }, uniquingKeysWith: { first, _ in first })
-        var displayBounds: [CGDirectDisplayID: CGRect] = [:]
-        for display in content.displays {
-            displayBounds[display.displayID] = CGDisplayBounds(display.displayID)
-        }
 
         let finished = DispatchSemaphore(value: 0)
         let results = Box<[Int: CGImage]>()
@@ -160,7 +151,7 @@ final class BackdropCapturer: @unchecked Sendable {
                 return nil
             }
 
-            let scale = pixelScale(forWindowFrame: request.frame, displayBounds: displayBounds)
+            let scale = pixelScale(forWindowFrame: request.frame, among: content.displays)
             let width = request.frame.width * scale
             let height = request.frame.height * scale
             guard width.isFinite, height.isFinite, width >= 1, height >= 1 else {
@@ -196,16 +187,13 @@ final class BackdropCapturer: @unchecked Sendable {
     }
 
     /// Pixels per point of the display a window is mostly on.
-    private func pixelScale(forWindowFrame frame: CGRect, displayBounds: [CGDirectDisplayID: CGRect]) -> CGFloat {
-        func overlap(_ rect: CGRect) -> CGFloat {
-            let intersection = rect.intersection(frame)
-            return intersection.isNull ? 0 : intersection.width * intersection.height
-        }
-        guard let display = displayBounds.max(by: { overlap($0.value) < overlap($1.value) }), overlap(display.value) > 0,
-              let mode = CGDisplayCopyDisplayMode(display.key), display.value.width > 0 else {
+    private func pixelScale(forWindowFrame frame: CGRect, among displays: [SCDisplay]) -> CGFloat {
+        guard let display = ActiveDisplays.mostOverlapping(frame, among: displays, bounds: { CGDisplayBounds($0.displayID) }),
+              let mode = CGDisplayCopyDisplayMode(display.displayID) else {
             return 1
         }
-        return CGFloat(mode.pixelWidth) / display.value.width
+        let width = CGDisplayBounds(display.displayID).width
+        return width > 0 ? CGFloat(mode.pixelWidth) / width : 1
     }
 
     /// Hands a value from an async task back to the waiting thread; the semaphore orders the accesses.

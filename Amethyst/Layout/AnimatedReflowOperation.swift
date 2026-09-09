@@ -407,11 +407,7 @@ final class AnimatedReflowOperation<Window: WindowType>: Operation, @unchecked S
 
     /// A point to the right of every active display, in the flipped coordinates Accessibility uses.
     static func defaultParkingOrigin() -> CGPoint {
-        var displayCount: UInt32 = 0
-        CGGetActiveDisplayList(0, nil, &displayCount)
-        var displays = [CGDirectDisplayID](repeating: 0, count: Int(displayCount))
-        CGGetActiveDisplayList(displayCount, &displays, &displayCount)
-        return parkingOrigin(forDisplayBounds: displays.map { CGDisplayBounds($0) })
+        return parkingOrigin(forDisplayBounds: ActiveDisplays.bounds())
     }
 
     static func parkingOrigin(forDisplayBounds bounds: [CGRect]) -> CGPoint {

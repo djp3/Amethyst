@@ -95,6 +95,34 @@ struct WindowCaptureRequest {
     let frame: CGRect
 }
 
+/// The displays the window server currently drives, and the one rule for deciding which of them a rectangle belongs to.
+enum ActiveDisplays {
+    static func identifiers() -> [CGDirectDisplayID] {
+        var displayCount: UInt32 = 0
+        CGGetActiveDisplayList(0, nil, &displayCount)
+        var displays = [CGDirectDisplayID](repeating: 0, count: Int(displayCount))
+        CGGetActiveDisplayList(displayCount, &displays, &displayCount)
+        return displays
+    }
+
+    /// The bounds of every active display, in the flipped coordinates Accessibility uses.
+    static func bounds() -> [CGRect] {
+        return identifiers().map { CGDisplayBounds($0) }
+    }
+
+    /// The candidate whose bounds overlap `rect` most, or `nil` if none overlaps it at all.
+    static func mostOverlapping<Candidate>(_ rect: CGRect, among candidates: [Candidate], bounds: (Candidate) -> CGRect) -> Candidate? {
+        func overlap(_ candidate: Candidate) -> CGFloat {
+            let intersection = bounds(candidate).intersection(rect)
+            return intersection.isNull ? 0 : intersection.width * intersection.height
+        }
+        guard let best = candidates.max(by: { overlap($0) < overlap($1) }), overlap(best) > 0 else {
+            return nil
+        }
+        return best
+    }
+}
+
 /**
  Captures full images of windows, choosing the mechanism per window.
 
@@ -103,23 +131,12 @@ struct WindowCaptureRequest {
 enum WindowImageCapture {
     /// The bounds of the display among `bounds` that overlaps `screenFrame` most, or `nil` if none does.
     static func displayBounds(containing screenFrame: CGRect, among bounds: [CGRect]) -> CGRect? {
-        func overlap(_ rect: CGRect) -> CGFloat {
-            let intersection = rect.intersection(screenFrame)
-            return intersection.isNull ? 0 : intersection.width * intersection.height
-        }
-        guard let best = bounds.max(by: { overlap($0) < overlap($1) }), overlap(best) > 0 else {
-            return nil
-        }
-        return best
+        return ActiveDisplays.mostOverlapping(screenFrame, among: bounds) { $0 }
     }
 
     /// The bounds of the active display containing `screenFrame`.
     static func activeDisplayBounds(containing screenFrame: CGRect) -> CGRect? {
-        var displayCount: UInt32 = 0
-        CGGetActiveDisplayList(0, nil, &displayCount)
-        var displays = [CGDirectDisplayID](repeating: 0, count: Int(displayCount))
-        CGGetActiveDisplayList(displayCount, &displays, &displayCount)
-        return displayBounds(containing: screenFrame, among: displays.map { CGDisplayBounds($0) })
+        return displayBounds(containing: screenFrame, among: ActiveDisplays.bounds())
     }
 
     /**
