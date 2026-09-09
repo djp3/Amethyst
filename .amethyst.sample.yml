@@ -237,8 +237,10 @@ toggle-focus-follows-mouse:
   mod: mod2
   key: x
 
-# Turn on or off animate-windows (unbound by default; set a mod and key to enable).
-toggle-animate-windows: false
+# Turn on or off animate-windows (unbound by default; uncomment and set a mod and key to enable).
+# toggle-animate-windows:
+#   mod: mod2
+#   key: <NONE>
 
 # Automatically quit and reopen Amethyst.
 relaunch-amethyst:
