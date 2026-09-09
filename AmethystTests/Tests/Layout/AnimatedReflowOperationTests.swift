@@ -824,6 +824,22 @@ class AnimatedReflowOperationTests: QuickSpec {
                 expect(AnimatingWindows.shared.screenID(for: fixture.windows[0].cgID())).to(beNil())
             }
 
+            it("settles and fades even when the glide never reports completion") {
+                let fixture = self.makeFixture(startFrames: startFrames, targetFrames: targetFrames)
+                let clock = FakeClock()
+                let animator = FakeSnapshotAnimator()
+                // Nothing ever completes the glide, as when a display is asleep.
+                animator.completesImmediately = false
+                let operation = self.makeSnapshotOperation(fixture, clock: clock, animator: animator, capture: captureAll)
+
+                operation.main()
+
+                expect(operation.isCancelled).to(beFalse())
+                expect(animator.cancelCalled).to(beFalse())
+                expect(animator.finishCalled).to(beTrue())
+                expect(fixture.windows.map { $0.frame() }) == fixture.operations.map { $0.frameAssignment.finalFrame }
+            }
+
             it("takes the overlay down when cancelled after the glide but before the handoff") {
                 let fixture = self.makeFixture(startFrames: startFrames, targetFrames: targetFrames)
                 let clock = FakeClock()

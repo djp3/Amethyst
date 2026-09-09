@@ -658,8 +658,15 @@ final class AnimatedReflowOperation<Window: WindowType>: Operation, @unchecked S
             // Pace the checks with the injectable sleep so the injected clock advances in tests.
             sleep(frameInterval)
             remainingWaits -= 1
-            if isCancelled || remainingWaits <= 0 {
+            if isCancelled {
                 return false
+            }
+
+            // The render server pauses animations, and their completions, while a display sleeps or the main thread stalls.
+            // That is not a cancellation: the motion is over as far as anyone can see, so carry on to the exact placement.
+            if remainingWaits <= 0 {
+                os_log("Animated reflow: the glide never reported completion; settling anyway", log: animationLog, type: .info)
+                break
             }
 
             // A window thrown to another screen or Space mid-glide is no longer ours: stop refining it and hide its proxy.
