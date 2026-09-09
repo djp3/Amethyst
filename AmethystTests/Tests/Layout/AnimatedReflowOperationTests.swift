@@ -1318,6 +1318,20 @@ class AnimatedReflowOperationTests: QuickSpec {
                 }
             }
 
+            it("keeps a window that took focus after the layout was planned on screen when settling") {
+                // The layout was planned with nothing focused; focus then moved to the window, whose application refuses to
+                // shrink below 800pt, so the settle must shift it left to stay within the 2000pt screen.
+                let offscreenTarget = CGRect(x: 1600, y: 0, width: 400, height: 1000)
+                let fixture = self.makeFixture(startFrames: [startFrames[0]], targetFrames: [offscreenTarget])
+                let window = fixture.windows[0]
+                window.minimumSize = CGSize(width: 800, height: 1000)
+                window.isFocusedValue = true
+
+                fixture.operations[0].frameAssignment.perform(withWindow: window)
+
+                expect(window.frame()) == CGRect(x: 1200, y: 0, width: 800, height: 1000)
+            }
+
             it("keeps the focused window on screen with the size its application kept") {
                 // The tile fits the screen, but the app keeps the window 1100 wide, so the glide must clamp with that width.
                 let fixture = self.makeFixture(startFrames: [CGRect(x: 0, y: 0, width: 1100, height: 1000)], targetFrames: [CGRect(x: 1500, y: 0, width: 500, height: 1000)], focusedIndex: 0)

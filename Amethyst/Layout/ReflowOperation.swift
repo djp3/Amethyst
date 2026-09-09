@@ -238,6 +238,11 @@ struct FrameAssignment<Window: WindowType> {
             return frame
         }
 
+        return keptOnScreen(frame)
+    }
+
+    /// The frame shifted so that it lies within the screen, whichever window it is for. The settle applies this on the window's live focus rather than the layout-time snapshot, which may be stale by the time an animation ends.
+    func keptOnScreen(_ frame: CGRect) -> CGRect {
         var kept = frame
         kept.origin.x = max(screenFrame.minX, min(frame.origin.x, screenFrame.maxX - frame.width))
         kept.origin.y = max(screenFrame.minY, min(frame.origin.y, screenFrame.maxY - frame.height))
@@ -264,7 +269,7 @@ struct FrameAssignment<Window: WindowType> {
                 width: max(window.frame().width, finalFrame.width),
                 height: max(window.frame().height, finalFrame.height)
             )
-            finalOrigin = keepingFocusedWindowOnScreen(CGRect(origin: finalOrigin, size: finalFrame.size)).origin
+            finalOrigin = keptOnScreen(CGRect(origin: finalOrigin, size: finalFrame.size)).origin
         }
 
         // Move the window to its final frame
