@@ -375,15 +375,23 @@ final class AnimatedReflowOperation<Window: WindowType>: Operation, @unchecked S
         if let screenID = screenID {
             AnimatingWindows.shared.claim(windowIDs, for: screenID)
         }
+
+        var snapshotAnimator: SnapshotAnimating?
+        var lingeringProxies: [Int] = []
+        var overlayHandedOff = false
+
         defer {
+            // Whatever path leads out of here, the overlay must not outlive the operation: a cancellation that arrives after the
+            // glide would otherwise leave the panel, backdrop and all, on screen until the app is relaunched. By then the real
+            // windows are already in place, so taking it down at once is invisible; only the normal path gets the fade.
+            if let animator = snapshotAnimator, !overlayHandedOff {
+                runOnMainSync { animator.cancel() }
+            }
             if let screenID = screenID {
                 AnimatingWindows.shared.release(windowIDs, for: screenID)
             }
             participants.forEach { $0.window.endAnimatedMovement() }
         }
-
-        var snapshotAnimator: SnapshotAnimating?
-        var lingeringProxies: [Int] = []
 
         if !participants.isEmpty {
             switch attemptSnapshotAnimation(&participants) {
@@ -423,6 +431,7 @@ final class AnimatedReflowOperation<Window: WindowType>: Operation, @unchecked S
                     lingerDuration: AnimatedReflowOperation.lingeringFadeDuration
                 ) {}
             }
+            overlayHandedOff = true
             logFinalFrameMismatches(participants)
         }
     }

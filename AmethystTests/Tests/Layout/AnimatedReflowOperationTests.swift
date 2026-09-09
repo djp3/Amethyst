@@ -646,6 +646,28 @@ class AnimatedReflowOperationTests: QuickSpec {
                 expect(animator.crossfadeImages).to(beEmpty())
             }
 
+            it("takes the overlay down when cancelled after the glide but before the handoff") {
+                let fixture = self.makeFixture(startFrames: startFrames, targetFrames: targetFrames)
+                let clock = FakeClock()
+                let animator = FakeSnapshotAnimator()
+                var operation: AnimatedReflowOperation<TestWindow>!
+                // Parked mode places the real windows only after the glide; a new reflow cancelling right then used to
+                // leave the overlay on screen.
+                let target = fixture.operations[1].frameAssignment.finalFrame
+                fixture.windows[1].onAnimationFrame = { frame in
+                    if frame.origin == target.origin {
+                        operation.cancel()
+                    }
+                }
+                operation = self.makeSnapshotOperation(fixture, clock: clock, animator: animator, capture: captureAll)
+
+                operation.main()
+
+                expect(operation.isCancelled).to(beTrue())
+                expect(animator.finishCalled).to(beFalse())
+                expect(animator.cancelCalled).to(beTrue())
+            }
+
             it("leaves windows where the user saw them when cancelled mid-glide") {
                 let fixture = self.makeFixture(startFrames: startFrames, targetFrames: targetFrames)
                 let clock = FakeClock()

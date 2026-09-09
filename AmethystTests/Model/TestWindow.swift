@@ -62,6 +62,9 @@ final class TestWindow: WindowType {
     /// Simulates a slow application: how long each animation frame write should block.
     var animationFrameDelay: TimeInterval = 0
 
+    /// Lets a test react to each animation frame write, for example to cancel an operation at a precise moment.
+    var onAnimationFrame: ((CGRect) -> Void)?
+
     /// Simulates an application that refuses to grow beyond a certain size, like System Settings.
     var maximumSize: CGSize?
 
@@ -95,6 +98,7 @@ final class TestWindow: WindowType {
         }
         _frame = CGRect(origin: constrained(frame.origin), size: includingSize ? constrained(frame.size) : _frame.size)
         frameHistory.append(_frame)
+        onAnimationFrame?(_frame)
     }
 
     func clearFrameHistory() {
