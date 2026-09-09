@@ -1078,9 +1078,6 @@ class AnimatedReflowOperationTests: QuickSpec {
                 // Reading it back now would return its old frame; no correction may be issued for it.
                 expect(animator.retargetedFrames.flatMap { $0 }.compactMap { $0 }).to(beEmpty())
                 expect(animator.finishCalled).to(beTrue())
-
-                // Let the slow writer finish before the windows go away.
-                Thread.sleep(forTimeInterval: 0.7)
             }
 
             it("aims a non-resizable window's proxy at the tile position with the window's own size, in parked mode too") {
@@ -1623,9 +1620,9 @@ class AnimatedReflowOperationTests: QuickSpec {
                 )
 
                 operation.main()
-                Thread.sleep(forTimeInterval: 1.5)
 
-                // The settle's write must be the last thing the window received.
+                // The operation waits for its writers before settling and before returning, so nothing is in flight now and
+                // the settle's write must be the last thing the window received.
                 expect(slow.frameHistory.last) == fixture.operations[1].frameAssignment.finalFrame
                 expect(slow.frame()) == fixture.operations[1].frameAssignment.finalFrame
             }
