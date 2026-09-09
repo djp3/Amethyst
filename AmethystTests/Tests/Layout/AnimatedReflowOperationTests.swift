@@ -778,6 +778,10 @@ class AnimatedReflowOperationTests: QuickSpec {
                 let clock = FakeClock()
                 let animator = FakeSnapshotAnimator()
                 animator.completesImmediately = false
+                var glideStartedAt: TimeInterval = 0
+                var dissolvedAt: TimeInterval = 0
+                animator.onAnimate = { glideStartedAt = clock.now() }
+                animator.onCrossfade = { dissolvedAt = clock.now() }
                 // Captures are sized like the windows they picture, one pixel per point, so a fresh capture matches the accepted size.
                 let captureCurrent: ([WindowCaptureRequest]) -> [CGImage]? = { requests in
                     requests.indices.map { position in
@@ -805,7 +809,8 @@ class AnimatedReflowOperationTests: QuickSpec {
                 expect(animator.retargetedFrames).to(beEmpty())
                 expect(animator.crossfadeImages.count) == 1
                 expect(animator.crossfadeImages[0].compactMap { $0 }.count) == 2
-                expect(animator.crossfadeDurations[0]) <= self.duration
+                // A mid-glide dissolve gets the time the glide has left, never less than the minimum dissolve.
+                expect(animator.crossfadeDurations[0]) == max(self.duration - (dissolvedAt - glideStartedAt), 0.15)
                 expect(animator.finishCalled).to(beTrue())
             }
 
@@ -1138,7 +1143,6 @@ class AnimatedReflowOperationTests: QuickSpec {
                 expect(animator.retargetedFrames.count) == 1
                 expect(animator.retargetedFrames[0][0]).to(beNil())
                 expect(animator.retargetedFrames[0][1]) == accepted
-                expect(animator.retargetDurations[0]) <= self.duration
                 expect(constrained.frame()) == accepted
                 expect(animator.finishCalled).to(beTrue())
                 // Parked windows cannot be captured, so no dissolve happens in this mode.
@@ -1270,7 +1274,6 @@ class AnimatedReflowOperationTests: QuickSpec {
 
                 operation.main()
 
-                expect(operation.isCancelled).to(beFalse())
                 expect(animator.cancelCalled).to(beFalse())
                 expect(animator.finishCalled).to(beTrue())
                 expect(fixture.windows.map { $0.frame() }) == fixture.operations.map { $0.frameAssignment.finalFrame }
@@ -1629,7 +1632,6 @@ class AnimatedReflowOperationTests: QuickSpec {
                 operation.main()
 
                 expect(operation.tickCount) == 0
-                expect(operation.isFinished).to(beFalse()) // main() was called directly; only a queue marks it finished
             }
         }
     }

@@ -70,8 +70,16 @@ class UserConfigurationTests: QuickSpec {
 
     override func spec() {
         describe("window animation") {
-            it("is disabled by default") {
+            it("is disabled in the bundled defaults") {
+                let path = Bundle.main.path(forResource: "default", ofType: "amethyst")!
+                let defaults = try JSON(data: Data(contentsOf: URL(fileURLWithPath: path)))
+                expect(defaults["animate-windows"].bool) == false
+                expect(defaults["window-animation-duration"].double) == 0.3
+
+                // Seeding a fresh configuration from those defaults leaves animation off.
                 let configuration = UserConfiguration(storage: TestConfigurationStorage())
+                configuration.defaultConfiguration = defaults
+                configuration.loadConfiguration()
                 expect(configuration.animatesWindowMovement()).to(beFalse())
             }
 
