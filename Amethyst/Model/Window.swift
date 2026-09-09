@@ -170,8 +170,12 @@ enum WindowDecodingError: Error {
  A final class is necessary for satisfying the `focusedWindow()` requirement in the `WindowType` protocol. Otherwise, as `SIWindow` is not final, the type system does not know how to constrain `Self`.
  */
 final class AXWindow: SIWindow {
-    /// The application this window registered with `EnhancedUserInterfaceSuppression` for an animation, until it deregisters.
-    fileprivate var suppressedApplicationPID: pid_t?
+    /// One entry per animation currently registered with `EnhancedUserInterfaceSuppression` for this window, holding the
+    /// application it registered with. Two screens can animate the same window object in turn when it is thrown between
+    /// them, so this is a count rather than a flag: each begin registers, each end deregisters, and the two balance out.
+    fileprivate var suppressedApplicationPIDs: [pid_t] = []
+    /// Guards `suppressedApplicationPIDs`, which the reflow operations of different screens touch from their own queues.
+    fileprivate static let suppressionLock = NSLock()
 }
 
 /**
@@ -328,12 +332,14 @@ extension AXWindow: WindowType {
     }
 
     func beginAnimatedMovement() {
-        guard suppressedApplicationPID == nil, let application = app() else {
+        guard let application = app() else {
             return
         }
 
         let pid = application.processIdentifier()
-        suppressedApplicationPID = pid
+        AXWindow.suppressionLock.lock()
+        suppressedApplicationPIDs.append(pid)
+        AXWindow.suppressionLock.unlock()
         EnhancedUserInterfaceSuppression.shared.begin(for: pid) {
             guard application.number(forKey: AXWindow.enhancedUserInterfaceKey)?.boolValue == true else {
                 return false
@@ -345,11 +351,13 @@ extension AXWindow: WindowType {
     }
 
     func endAnimatedMovement() {
-        guard let pid = suppressedApplicationPID else {
+        AXWindow.suppressionLock.lock()
+        let pid = suppressedApplicationPIDs.popLast()
+        AXWindow.suppressionLock.unlock()
+        guard let pid = pid else {
             return
         }
 
-        suppressedApplicationPID = nil
         let application = app()
         EnhancedUserInterfaceSuppression.shared.end(for: pid) {
             application?.setFlag(true, forKey: AXWindow.enhancedUserInterfaceKey)
