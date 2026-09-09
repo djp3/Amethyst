@@ -103,15 +103,18 @@ final class ApplicationFrameWriter<Window: WindowType> {
     private let queue: DispatchQueue?
     private let group: DispatchGroup
     private let now: () -> TimeInterval
+    private let shouldApply: (Window) -> Bool
     private let lock = NSLock()
     private var pending: [Int: Write] = [:]
     private var isDraining = false
     private var statistics = Statistics()
 
-    init(pid: pid_t, group: DispatchGroup, inline: Bool, now: @escaping () -> TimeInterval) {
+    /// - Parameter shouldApply: Asked immediately before each frame is written, so a window that may no longer be touched, because it was handed to another screen while its frame waited its turn, is left alone.
+    init(pid: pid_t, group: DispatchGroup, inline: Bool, now: @escaping () -> TimeInterval, shouldApply: @escaping (Window) -> Bool = { _ in true }) {
         self.pid = pid
         self.group = group
         self.now = now
+        self.shouldApply = shouldApply
         self.queue = inline ? nil : DispatchQueue(label: "Amethyst.ApplicationFrameWriter.\(pid)", qos: .userInteractive)
     }
 
@@ -185,6 +188,12 @@ final class ApplicationFrameWriter<Window: WindowType> {
             lock.unlock()
 
             for write in batch.values {
+                // Ownership was checked when the frame was queued; check again now, since the window may have been handed to
+                // another screen while this frame waited behind a slow application.
+                guard shouldApply(write.window) else {
+                    continue
+                }
+
                 let start = now()
                 write.window.setAnimationFrame(write.frame, includingSize: write.includingSize)
                 let elapsed = now() - start
@@ -1127,7 +1136,9 @@ final class AnimatedReflowOperation<Window: WindowType>: Operation, @unchecked S
             return writer
         }
 
-        let writer = ApplicationFrameWriter<Window>(pid: pid, group: writerGroup, inline: writesInline, now: now)
+        let writer = ApplicationFrameWriter<Window>(pid: pid, group: writerGroup, inline: writesInline, now: now) { [weak self] window in
+            self?.owns(window) ?? false
+        }
         writers[pid] = writer
         return writer
     }

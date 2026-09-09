@@ -279,6 +279,34 @@ class AnimatedReflowOperationTests: QuickSpec {
                 return .init(window: window, frame: CGRect(x: xPosition, y: 0, width: 100, height: 100), includingSize: false)
             }
 
+            it("drops a queued frame once its window may no longer be touched") {
+                let window = TestWindow(element: nil)!
+                let group = DispatchGroup()
+                let checked = DispatchSemaphore(value: 0)
+                let proceed = DispatchSemaphore(value: 0)
+                var allowed = true
+                let holdUntilHandedOff: (TestWindow) -> Bool = { _ in
+                    // Decide from the state on entry, then hold the frame until the test has queued the next one behind it
+                    // and handed the window off.
+                    let decision = allowed
+                    checked.signal()
+                    proceed.wait()
+                    return decision
+                }
+                let writer = ApplicationFrameWriter<TestWindow>(pid: 1, group: group, inline: false, now: { 0 }, shouldApply: holdUntilHandedOff)
+
+                writer.write([0: makeWrite(window, xPosition: 1)])
+                expect(checked.wait(timeout: .now() + 2)) == .success
+                writer.write([0: makeWrite(window, xPosition: 2)])
+                allowed = false
+                // Release the first frame, and let the second be checked at once.
+                proceed.signal()
+                proceed.signal()
+
+                expect(group.wait(timeout: .now() + 2)) == .success
+                expect(window.frameHistory.map { $0.minX }) == [1]
+            }
+
             it("applies every frame when writing inline") {
                 let window = TestWindow(element: nil)!
                 let group = DispatchGroup()
@@ -906,6 +934,33 @@ class AnimatedReflowOperationTests: QuickSpec {
 
                 // No correction and no crash: the proxy keeps its original target and the handoff still happens.
                 expect(animator.retargetedFrames.flatMap { $0 }.compactMap { $0 }).to(beEmpty())
+                expect(animator.finishCalled).to(beTrue())
+            }
+
+            it("drops frames still queued for a window handed off while its application was busy") {
+                let fixture = self.makeFixture(startFrames: startFrames, targetFrames: targetFrames)
+                let clock = FakeClock()
+                let animator = FakeSnapshotAnimator()
+                let thrown = fixture.windows[1]
+                // The application takes 0.4 s over the park write, so the resize queued behind it is still waiting when the
+                // throw comes 0.2 s in.
+                thrown.animationFrameDelay = 0.4
+                let operation = self.makeSnapshotOperation(fixture, clock: clock, animator: animator, capture: captureAll, screenID: "source", writesInline: false)
+
+                // A group rather than a semaphore: the wait below is polled, and polling must not consume the signal.
+                let finished = DispatchGroup()
+                finished.enter()
+                Thread.detachNewThread {
+                    operation.main()
+                    finished.leave()
+                }
+                self.letMainThreadRun(attempts: 4) { false }
+                AnimatingWindows.shared.handOff([thrown.cgID()])
+                self.letMainThreadRun(attempts: 100) { finished.wait(timeout: .now()) == .success }
+
+                // The park had already landed; the resize queued behind it must not, nor anything after it.
+                expect(thrown.frameHistory.count) == 1
+                expect(fixture.windows[0].frame()) == fixture.operations[0].frameAssignment.finalFrame
                 expect(animator.finishCalled).to(beTrue())
             }
 
