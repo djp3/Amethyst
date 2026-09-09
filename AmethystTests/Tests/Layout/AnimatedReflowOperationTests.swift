@@ -879,7 +879,9 @@ class AnimatedReflowOperationTests: QuickSpec {
                 fixture.windows[0].frameIsUnreadable = true
                 let clock = FakeClock()
                 let animator = FakeSnapshotAnimator()
-                let operation = self.makeSnapshotOperation(fixture, clock: clock, animator: animator, capture: captureAll)
+                // A real screen identifier, as the screen manager always supplies one: the settle must not mistake a window
+                // that was never claimed for one that was handed off.
+                let operation = self.makeSnapshotOperation(fixture, clock: clock, animator: animator, capture: captureAll, screenID: "screen-a")
 
                 operation.main()
 

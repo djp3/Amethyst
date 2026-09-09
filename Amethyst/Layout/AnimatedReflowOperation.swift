@@ -486,8 +486,13 @@ final class AnimatedReflowOperation<Window: WindowType>: Operation, @unchecked S
         waitForWriters()
 
         // Settle: apply the exact final frames through the regular path, including focused-window peeking, except for windows
-        // Amethyst has since moved elsewhere.
-        for frameAssignment in frameAssignments where windowSet.window(for: frameAssignment).map(owns) ?? false {
+        // Amethyst has since moved elsewhere. Only participants were claimed, so a window that never took part, because its
+        // frame could not be read, is settled just as a non-animated reflow would settle it.
+        let claimedWindowIDs = Set(windowIDs)
+        for frameAssignment in frameAssignments {
+            guard let window = windowSet.window(for: frameAssignment), owns(window) || !claimedWindowIDs.contains(window.cgID()) else {
+                continue
+            }
             windowSet.perform(frameAssignment: frameAssignment)
         }
 
