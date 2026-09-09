@@ -316,6 +316,15 @@ class AnimatedReflowOperationTests: QuickSpec {
                 expect(origin.x) == 2878 + 200
             }
 
+            it("finds an attached screen by its identifier") {
+                guard let screen = AMScreen.availableScreens.last, let screenID = screen.screenID() else {
+                    fail("no attached screen to test with")
+                    return
+                }
+                expect(AMScreen.screen(withID: screenID)?.screenID()) == screenID
+                expect(AMScreen.screen(withID: "not-a-screen")).to(beNil())
+            }
+
             it("finds the display a screen frame lies on") {
                 let displays = [CGRect(x: 0, y: 0, width: 1728, height: 1117), CGRect(x: -962, y: -1600, width: 3840, height: 1600)]
                 let external = CGRect(x: -962, y: -1570, width: 3840, height: 1570)

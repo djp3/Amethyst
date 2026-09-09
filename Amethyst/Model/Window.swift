@@ -322,6 +322,12 @@ extension AXWindow: WindowType {
     }
 
     func screen() -> AMScreen? {
+        // A window an animation is moving belongs to the screen animating it even while its frame lies elsewhere or, when
+        // parked beyond every display, nowhere at all. Everything that routes hotkeys and focus by screen relies on this answer.
+        if let animatingScreenID = AnimatingWindows.shared.screenID(for: cgID()), let screen = AMScreen.screen(withID: animatingScreenID) {
+            return screen
+        }
+
         let nsScreen: NSScreen? = screen()
         return nsScreen.flatMap { AMScreen(screen: $0) }
     }
