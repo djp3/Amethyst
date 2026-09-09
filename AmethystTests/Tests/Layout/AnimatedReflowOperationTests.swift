@@ -34,6 +34,12 @@ class AnimatedReflowOperationTests: QuickSpec {
     private struct Fixture {
         let windows: [TestWindow]
         let operations: [FrameAssignmentOperation<TestWindow>]
+
+        /// The window a capture request is about. Fakes resolve requests this way rather than by position, so they answer
+        /// correctly whichever windows the operation asks about, and in whatever order.
+        func window(for request: WindowCaptureRequest) -> TestWindow {
+            return windows.first { $0.cgID() == request.windowID }!
+        }
     }
 
     /// Records the overlay calls the operation makes and completes the glide immediately unless told otherwise.
@@ -784,8 +790,8 @@ class AnimatedReflowOperationTests: QuickSpec {
                 animator.onCrossfade = { dissolvedAt = clock.now() }
                 // Captures are sized like the windows they picture, one pixel per point, so a fresh capture matches the accepted size.
                 let captureCurrent: ([WindowCaptureRequest]) -> [CGImage]? = { requests in
-                    requests.indices.map { position in
-                        let size = fixture.windows[position].frame().size
+                    requests.map { request in
+                        let size = fixture.window(for: request).frame().size
                         return AnimatedReflowOperationTests.makeImage(width: Int(size.width), height: Int(size.height))
                     }
                 }
@@ -822,8 +828,8 @@ class AnimatedReflowOperationTests: QuickSpec {
                 let animator = FakeSnapshotAnimator()
                 animator.completesImmediately = false
                 let captureCurrent: ([WindowCaptureRequest]) -> [CGImage]? = { requests in
-                    requests.indices.map { position in
-                        let size = fixture.windows[position].frame().size
+                    requests.map { request in
+                        let size = fixture.window(for: request).frame().size
                         return AnimatedReflowOperationTests.makeImage(width: Int(size.width), height: Int(size.height))
                     }
                 }
@@ -854,7 +860,7 @@ class AnimatedReflowOperationTests: QuickSpec {
                 animator.onCrossfade = { animator.endGlide() }
                 let captureCurrent: ([WindowCaptureRequest]) -> [CGImage]? = { requests in
                     requests.map { request in
-                        let window = fixture.windows.first { $0.cgID() == request.windowID }!
+                        let window = fixture.window(for: request)
                         return AnimatedReflowOperationTests.makeImage(width: Int(window.frame().width), height: Int(window.frame().height))
                     }
                 }
@@ -885,7 +891,7 @@ class AnimatedReflowOperationTests: QuickSpec {
                 let captureLagging: ([WindowCaptureRequest]) -> [CGImage]? = { requests in
                     captureCalls += 1
                     return requests.map { request in
-                        let window = fixture.windows.first { $0.cgID() == request.windowID }!
+                        let window = fixture.window(for: request)
                         // The second window's first recapture still shows its old surface, the way a slow renderer does.
                         let stale = captureCalls == 2 && request.windowID == fixture.windows[1].cgID()
                         let size = stale ? startFrames[1].size : window.frame().size
@@ -917,12 +923,9 @@ class AnimatedReflowOperationTests: QuickSpec {
                 // The second window's first recapture still shows its old surface, the way a slow renderer does.
                 let captureLagging: ([WindowCaptureRequest]) -> [CGImage]? = { requests in
                     captureCalls += 1
-                    return requests.indices.map { position in
-                        let window = fixture.windows[requests.count == fixture.windows.count ? position : 1]
-                        var size = window.frame().size
-                        if captureCalls == 2, position == 1 {
-                            size = startFrames[1].size
-                        }
+                    return requests.map { request in
+                        let stale = captureCalls == 2 && request.windowID == fixture.windows[1].cgID()
+                        let size = stale ? startFrames[1].size : fixture.window(for: request).frame().size
                         return AnimatedReflowOperationTests.makeImage(width: Int(size.width), height: Int(size.height))
                     }
                 }
@@ -948,7 +951,7 @@ class AnimatedReflowOperationTests: QuickSpec {
                 animator.completesImmediately = false
                 let captureCurrent: ([WindowCaptureRequest]) -> [CGImage]? = { requests in
                     requests.map { request in
-                        let window = fixture.windows.first { $0.cgID() == request.windowID }!
+                        let window = fixture.window(for: request)
                         return AnimatedReflowOperationTests.makeImage(width: Int(window.frame().width), height: Int(window.frame().height))
                     }
                 }
@@ -975,10 +978,9 @@ class AnimatedReflowOperationTests: QuickSpec {
                 // The second window's surface never changes, the way an app that does not repaint while covered behaves.
                 let captureStuck: ([WindowCaptureRequest]) -> [CGImage]? = { requests in
                     captureCalls += 1
-                    return requests.indices.map { position in
-                        let isInitialCapture = requests.count == fixture.windows.count
-                        let windowIndex = isInitialCapture ? position : 1
-                        let size = captureCalls == 1 || windowIndex == 0 ? fixture.windows[windowIndex].frame().size : startFrames[1].size
+                    return requests.map { request in
+                        let stuck = captureCalls > 1 && request.windowID == fixture.windows[1].cgID()
+                        let size = stuck ? startFrames[1].size : fixture.window(for: request).frame().size
                         return AnimatedReflowOperationTests.makeImage(width: Int(size.width), height: Int(size.height))
                     }
                 }
