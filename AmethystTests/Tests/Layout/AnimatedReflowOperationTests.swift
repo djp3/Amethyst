@@ -203,9 +203,12 @@ class AnimatedReflowOperationTests: QuickSpec {
             windowForID: { id in return windows.first { $0.id() == id } }
         )
         let resizeRules = ResizeRules(isMain: true, unconstrainedDimension: .horizontal, scaleFactor: 1)
+        // A blank configuration: the frames these tests assert on must not pick up the margins or minimum sizes set in the
+        // preferences of whoever runs them.
+        let configuration = UserConfiguration(storage: TestConfigurationStorage())
         let operations = zip(layoutWindows, targetFrames).map { layoutWindow, target in
             FrameAssignmentOperation(
-                frameAssignment: FrameAssignment(frame: target, window: layoutWindow, screenFrame: screenFrame, resizeRules: resizeRules),
+                frameAssignment: FrameAssignment(frame: target, window: layoutWindow, screenFrame: screenFrame, resizeRules: resizeRules, configuration: configuration),
                 windowSet: windowSet
             )
         }
@@ -572,6 +575,22 @@ class AnimatedReflowOperationTests: QuickSpec {
                 self.letMainThreadRun(attempts: 100) { livePanels() == 0 && stillAlive == nil }
                 expect(livePanels()) == 0
                 expect(stillAlive).to(beNil())
+            }
+        }
+
+        describe("frame assignment") {
+            it("applies window margins from the configuration it is given") {
+                let window = LayoutWindow<TestWindow>(id: "window", frame: .zero, isFocused: false)
+                let rules = ResizeRules(isMain: true, unconstrainedDimension: .horizontal, scaleFactor: 1)
+                let tile = CGRect(x: 0, y: 0, width: 1000, height: 1000)
+                let storage = TestConfigurationStorage()
+                storage.set(true, forKey: .windowMargins)
+                storage.set(Float(20), forKey: .windowMarginSize)
+                let withMargins = FrameAssignment(frame: tile, window: window, screenFrame: tile, resizeRules: rules, configuration: UserConfiguration(storage: storage))
+                let withoutMargins = FrameAssignment(frame: tile, window: window, screenFrame: tile, resizeRules: rules, configuration: UserConfiguration(storage: TestConfigurationStorage()))
+
+                expect(withMargins.finalFrame) == CGRect(x: 10, y: 10, width: 980, height: 980)
+                expect(withoutMargins.finalFrame) == tile
             }
         }
 
@@ -1246,7 +1265,10 @@ class AnimatedReflowOperationTests: QuickSpec {
                 let followUpAnimator = FakeSnapshotAnimator()
                 let followUpOperations = fixture.operations.enumerated().map { index, original -> FrameAssignmentOperation<TestWindow> in
                     let assignment = original.frameAssignment
-                    let reversed = FrameAssignment(frame: startFrames[index], window: assignment.window, screenFrame: assignment.screenFrame, resizeRules: assignment.resizeRules)
+                    let reversed = FrameAssignment(
+                        frame: startFrames[index], window: assignment.window, screenFrame: assignment.screenFrame,
+                        resizeRules: assignment.resizeRules, configuration: assignment.configuration
+                    )
                     return FrameAssignmentOperation(frameAssignment: reversed, windowSet: original.windowSet)
                 }
                 let followUpOperation = AnimatedReflowOperation(

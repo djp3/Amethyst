@@ -164,36 +164,41 @@ struct FrameAssignment<Window: WindowType> {
     /// If `true`, then  window margins won't be applied
     let disableWindowMargins: Bool
 
-    init(frame: CGRect, window: LayoutWindow<Window>, screenFrame: CGRect, resizeRules: ResizeRules) {
+    /// The settings the final frame applies: window margins and minimum sizes. Tests pass a blank configuration so their frames do not depend on the preferences of whoever runs them.
+    let configuration: UserConfiguration
+
+    init(frame: CGRect, window: LayoutWindow<Window>, screenFrame: CGRect, resizeRules: ResizeRules, configuration: UserConfiguration = .shared) {
         self.frame = frame
         self.window =  window
         self.screenFrame = screenFrame
         self.resizeRules = resizeRules
         self.disableWindowMargins = false
+        self.configuration = configuration
     }
 
-    init(frame: CGRect, window: LayoutWindow<Window>, screenFrame: CGRect, resizeRules: ResizeRules, disableWindowMargins: Bool) {
+    init(frame: CGRect, window: LayoutWindow<Window>, screenFrame: CGRect, resizeRules: ResizeRules, disableWindowMargins: Bool, configuration: UserConfiguration = .shared) {
         self.frame = frame
         self.window =  window
         self.screenFrame = screenFrame
         self.resizeRules = resizeRules
         self.disableWindowMargins = disableWindowMargins
+        self.configuration = configuration
     }
 
     /// The final frame is the desired frame, but transformed to provide desired padding
     var finalFrame: CGRect {
         var ret = frame
-        let padding = floor(UserConfiguration.shared.windowMarginSize() / 2)
+        let padding = floor(configuration.windowMarginSize() / 2)
 
-        if UserConfiguration.shared.windowMargins() && !disableWindowMargins {
+        if configuration.windowMargins() && !disableWindowMargins {
             ret.origin.x += padding
             ret.origin.y += padding
             ret.size.width -= 2 * padding
             ret.size.height -= 2 * padding
         }
 
-        let windowMinimumWidth = UserConfiguration.shared.windowMinimumWidth()
-        let windowMinimumHeight = UserConfiguration.shared.windowMinimumHeight()
+        let windowMinimumWidth = configuration.windowMinimumWidth()
+        let windowMinimumHeight = configuration.windowMinimumHeight()
 
         if windowMinimumWidth > ret.size.width {
             ret.origin.x -= ((windowMinimumWidth - ret.size.width) / 2)
