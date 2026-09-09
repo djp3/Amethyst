@@ -35,8 +35,7 @@ class AnimatedReflowOperationTests: QuickSpec {
         let windows: [TestWindow]
         let operations: [FrameAssignmentOperation<TestWindow>]
 
-        /// The window a capture request is about. Fakes resolve requests this way rather than by position, so they answer
-        /// correctly whichever windows the operation asks about, and in whatever order.
+        /// The window a capture request is about, whichever windows the operation asks about and in whatever order.
         func window(for request: WindowCaptureRequest) -> TestWindow {
             return windows.first { $0.cgID() == request.windowID }!
         }
@@ -542,8 +541,7 @@ class AnimatedReflowOperationTests: QuickSpec {
                     NSApplication.shared.windows.first { $0.identifier == ReflowAnimationOverlay.panelIdentifier }?.collectionBehavior
                 }
 
-                // Following every Space, or standing still through a Space switch, would leave the old Space's picture over
-                // the new one until the cancelled animation takes it down.
+                // The panel stays with the Space it was made on; a Space switch carries it away.
                 expect(behavior).toNot(beNil())
                 expect(behavior?.contains(.canJoinAllSpaces)) == false
                 expect(behavior?.contains(.stationary)) == false
@@ -589,7 +587,7 @@ class AnimatedReflowOperationTests: QuickSpec {
                 self.onMain { overlay?.finish(fadeDuration: 0.02, lingering: [], lingerDuration: 0.02) {} }
                 overlay = nil
 
-                // The pending fade must keep the overlay alive by itself; with a weak reference it would be gone already.
+                // The pending fade keeps the overlay alive by itself.
                 expect(stillAlive).toNot(beNil())
 
                 // Then the fade, or its fallback timer, takes the panel down, and once the fallback has fired nothing holds
@@ -724,8 +722,7 @@ class AnimatedReflowOperationTests: QuickSpec {
             let captureAll: ([WindowCaptureRequest]) -> [CGImage]? = { requests in requests.map { _ in AnimatedReflowOperationTests.makeImage() } }
 
             it("parks, resizes out of sight, places, and settles each window") {
-                // Windows at distinct, non-zero heights: a window parks at the parking spot's x but keeps its own y, and with
-                // everything at zero the two could not be told apart.
+                // Windows at distinct, non-zero heights: a window parks at the parking spot's x but keeps its own y.
                 let starts = [
                     CGRect(x: 0, y: 40, width: 1000, height: 800),
                     CGRect(x: 1000, y: 120, width: 1000, height: 800)
@@ -892,8 +889,8 @@ class AnimatedReflowOperationTests: QuickSpec {
 
                 operation.main()
 
-                // Window 0 is corrected on the first tick, while window 1's application is still busy; with one writer for
-                // both, nothing could be corrected until the slow frame landed and the glide would run to a stall.
+                // Window 0 is corrected on the first tick, while window 1's application is still busy: each application has a
+                // writer of its own.
                 let accepted = CGRect(origin: fixture.operations[0].frameAssignment.finalFrame.origin, size: CGSize(width: 400, height: 1000))
                 expect(animator.retargetedFrames.count) == 1
                 expect(animator.retargetedFrames[0][0]) == accepted
@@ -1221,8 +1218,7 @@ class AnimatedReflowOperationTests: QuickSpec {
 
                 operation.main()
 
-                // The correction was requested and its completion never came, yet the operation finished. The counter it
-                // waited on is now held only by the swallowed completion and must survive being dropped with it.
+                // The correction was requested and its completion never came; the operation still finishes.
                 expect(animator.retargetedFrames.count) == 1
                 expect(animator.finishCalled).to(beTrue())
             }
@@ -1281,7 +1277,7 @@ class AnimatedReflowOperationTests: QuickSpec {
 
                 operation.main()
 
-                // No correction and no crash: the proxy keeps its original target and the handoff still happens.
+                // No correction: the proxy keeps its original target and the handoff still happens.
                 expect(animator.retargetedFrames.flatMap { $0 }.compactMap { $0 }).to(beEmpty())
                 expect(animator.finishCalled).to(beTrue())
             }
@@ -1296,7 +1292,7 @@ class AnimatedReflowOperationTests: QuickSpec {
                 thrown.animationFrameDelay = 0.4
                 let operation = self.makeSnapshotOperation(fixture, clock: clock, animator: animator, capture: captureAll, screenID: "source", writesInline: false)
 
-                // A group rather than a semaphore: the wait below is polled, and polling must not consume the signal.
+                // The wait below is polled, and polling a group does not consume its signal.
                 let finished = DispatchGroup()
                 finished.enter()
                 Thread.detachNewThread {
@@ -1409,8 +1405,7 @@ class AnimatedReflowOperationTests: QuickSpec {
                 let clock = FakeClock()
                 let animator = FakeSnapshotAnimator()
                 var operation: AnimatedReflowOperation<TestWindow>!
-                // Parked mode places the real windows only after the glide; a new reflow cancelling right then used to
-                // leave the overlay on screen.
+                // Parked mode places the real windows only after the glide; a new reflow cancels right then.
                 let target = fixture.operations[1].frameAssignment.finalFrame
                 fixture.windows[1].onAnimationFrame = { frame in
                     if frame.origin == target.origin {
@@ -1601,8 +1596,8 @@ class AnimatedReflowOperationTests: QuickSpec {
 
             it("clamps the focused window with the size it asked for while a slow application is still resizing") {
                 // The focused window shrinks to 400pt and moves to the right edge of the 2000pt screen. Its application takes
-                // longer over the resize than the operation waits before reading sizes back; clamping with the stale 1000pt
-                // size would stop the glide 600pt short and leave the settle to jump the rest.
+                // longer over the resize than the operation waits before reading sizes back, so the on-screen clamp must use
+                // the 400pt size asked for.
                 let edgeTarget = CGRect(x: 1600, y: 0, width: 400, height: 1000)
                 let fixture = self.makeFixture(startFrames: [startFrames[0]], targetFrames: [edgeTarget], focusedIndex: 0)
                 let clock = FakeClock()
@@ -1612,8 +1607,8 @@ class AnimatedReflowOperationTests: QuickSpec {
 
                 operation.main()
 
-                // The resize lands first, then the last glide frame, then the settle's writes. Clamped with the stale
-                // 1000pt size, the glide could never pass x = 1000; with the 400pt size asked for it nearly reaches the tile.
+                // The resize lands first, then the last glide frame, then the settle's writes. Clamped with the 400pt size
+                // asked for, the glide nearly reaches the tile.
                 expect(slow.frameHistory.count) >= 3
                 expect(slow.frameHistory[0].size) == edgeTarget.size
                 expect(slow.frameHistory[1].origin.x) > 1500

@@ -296,13 +296,13 @@ final class ScreenManager<Delegate: ScreenManagerDelegate>: NSObject, Codable {
             }
         }
 
-        // Either animate every assignment together in one operation or apply them individually as before
+        // Either animate every assignment together in one operation or apply them individually
         let operations: [Operation]
         if userConfiguration.shouldAnimateWindowMovement() {
             // Smooth snapshot animation needs the private capture call and the Screen Recording permission; otherwise the real windows are moved.
             let canSnapshot = SkyLight.isAvailable && ScreenCapturePermission.isGranted
             if !canSnapshot && SkyLight.isAvailable {
-                // Asking macOS is harmless every launch; the hint is shown once, for long enough to read.
+                // macOS is asked every launch; the hint is shown once, for long enough to read.
                 ScreenCapturePermission.requestOnce()
                 if ScreenCapturePermission.takeHintOpportunity() {
                     displayCustomHUD(title: "Allow Screen Recording for smooth window animation", duration: ScreenCapturePermission.hintDuration)

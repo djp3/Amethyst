@@ -172,7 +172,7 @@ enum WindowDecodingError: Error {
 final class AXWindow: SIWindow {
     /// One entry per animation currently registered with `EnhancedUserInterfaceSuppression` for this window, holding the
     /// application it registered with. Two screens can animate the same window object in turn when it is thrown between
-    /// them, so this is a count rather than a flag: each begin registers, each end deregisters, and the two balance out.
+    /// them; each begin registers, each end deregisters, and the two balance out.
     fileprivate var suppressedApplicationPIDs: [pid_t] = []
     /// Guards `suppressedApplicationPIDs`, which the reflow operations of different screens touch from their own queues.
     fileprivate static let suppressionLock = NSLock()
@@ -312,7 +312,7 @@ extension AXWindow: WindowType {
     typealias Screen = AMScreen
     typealias WindowID = AXWindowID
 
-    /// Some assistive apps set this attribute on applications. Silica clears it around every frame change because it interferes with positioning; an animation keeps it cleared for as long as any of the application's windows is animating instead.
+    /// Some assistive apps set this attribute on applications. Silica clears it around every frame change because it interferes with positioning; an animation keeps it cleared for as long as any of the application's windows is animating.
     private static let enhancedUserInterfaceKey = "AXEnhancedUserInterface" as CFString
 
     func setAnimationFrame(_ frame: CGRect, includingSize: Bool) {

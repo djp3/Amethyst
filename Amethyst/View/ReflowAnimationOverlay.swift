@@ -111,8 +111,8 @@ final class ReflowAnimationOverlay: SnapshotAnimating {
         panel.ignoresMouseEvents = true
         panel.hidesOnDeactivate = false
         panel.isReleasedWhenClosed = false
-        // The panel belongs to the Space it was made on: a reflow only runs on the active Space, and a Space switch made
-        // mid-animation must carry the old Space's picture away with the old Space rather than leave it over the new one.
+        // The panel belongs to the Space it was made on: a reflow only runs on the active Space, and a Space switch
+        // carries the picture away with that Space.
         panel.collectionBehavior = [.ignoresCycle, .fullScreenAuxiliary]
         panel.sharingType = .none
         panel.animationBehavior = .none
@@ -299,9 +299,9 @@ final class ReflowAnimationOverlay: SnapshotAnimating {
             return
         }
 
-        // Nothing else holds the overlay once the reflow operation returns, so the completion must keep it alive itself
-        // until the panel has been taken down; a weak reference here would leave the panel on screen forever. A fallback
-        // timer takes the panel down even if the render server never reports the fade complete.
+        // Nothing else holds the overlay once the reflow operation returns, so the completion keeps it alive until the
+        // panel has been taken down. A fallback timer takes the panel down even if the render server never reports the
+        // fade complete.
         var finished = false
         let finishOnce = {
             guard !finished else {
@@ -336,9 +336,8 @@ final class ReflowAnimationOverlay: SnapshotAnimating {
     }
 
     func hide(indices: [Int]) {
-        // Opacity carries no implicit animation here and leaves the picture's motion running unseen. Removing the motion
-        // instead would snap the picture to its target, fade it over Core Animation's default quarter second, and count as
-        // the end of the newest batch of motion while other pictures are still on their way.
+        // Opacity carries no implicit animation here and leaves the picture's motion running unseen, so hiding one
+        // picture neither snaps it nor ends the batch of motion the other pictures are still in.
         for index in indices where index < layers.count {
             layers[index].opacity = 0
         }
@@ -349,8 +348,8 @@ final class ReflowAnimationOverlay: SnapshotAnimating {
         tearDown()
     }
 
-    /// Takes the panel down. Every completion the overlay accepted is called exactly once, so whoever is waiting on one is
-    /// released here rather than left waiting, or worse, holding a counter that is destroyed while still raised.
+    /// Takes the panel down and calls any completion still pending, so every completion the overlay accepted is called
+    /// exactly once.
     private func tearDown() {
         panel?.orderOut(nil)
         panel?.close()

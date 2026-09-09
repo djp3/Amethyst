@@ -818,7 +818,7 @@ extension WindowManager: ApplicationObservationDelegate {
         }
 
         // An animation's own writes generate move notifications for the windows it is moving; those are not user drags.
-        // Notifications about any other window are gestures and go through as before.
+        // Notifications about any other window are gestures and go through.
         guard !AnimatingWindows.shared.isAnimating(window.cgID()) else {
             return
         }
@@ -853,7 +853,7 @@ extension WindowManager: ApplicationObservationDelegate {
             return
         }
 
-        // Intermediate animation frames of a window being animated would otherwise be read back as a user-driven main pane ratio.
+        // Intermediate animation frames of a window being animated are not user-driven main pane ratios.
         guard !AnimatingWindows.shared.isAnimating(window.cgID()) else {
             return
         }

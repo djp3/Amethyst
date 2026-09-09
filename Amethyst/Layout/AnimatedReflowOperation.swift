@@ -42,7 +42,7 @@ enum FrameInterpolation {
     /**
      Linearly interpolates between two rects.
 
-     Each edge is interpolated and rounded independently, so every edge of the result lies between the corresponding edges of `start` and `end`, and consecutive ticks either produce a visibly different frame or an identical one that can be skipped. Rounding origin and size separately would not give that guarantee.
+     Each edge is interpolated and rounded independently, so every edge of the result lies between the corresponding edges of `start` and `end`, and consecutive ticks either produce a visibly different frame or an identical one that can be skipped.
      */
     static func interpolate(from start: CGRect, to end: CGRect, progress: CGFloat) -> CGRect {
         func lerp(_ startValue: CGFloat, _ endValue: CGFloat) -> CGFloat {
@@ -201,8 +201,8 @@ final class ApplicationFrameWriter<Window: WindowType> {
             lock.unlock()
 
             for write in batch.values {
-                // Ownership was checked when the frame was queued; check again now, since the window may have been handed to
-                // another screen while this frame waited behind a slow application.
+                // The window may have been handed to another screen while this frame waited behind a slow application, so
+                // ownership is checked again here, immediately before the write.
                 guard beginWrite(write.window) else {
                     continue
                 }
@@ -229,7 +229,7 @@ final class ApplicationFrameWriter<Window: WindowType> {
 final class AnimatingWindows {
     static let shared = AnimatingWindows()
 
-    /// Guards every table below. A condition rather than a plain lock so a hand-off can wait for writes in flight to end.
+    /// Guards every table below and lets a hand-off wait for writes in flight to end.
     private let lock = NSCondition()
     private var screenIDsByWindow: [CGWindowID: String] = [:]
     /// Where the animation is taking each claimed window, so a hand-off can put a window still parked off-screen somewhere sane.
@@ -523,9 +523,8 @@ final class AnimatedReflowOperation<Window: WindowType>: Operation, @unchecked S
         var overlayHandedOff = false
 
         defer {
-            // Whatever path leads out of here, the overlay must not outlive the operation: a cancellation that arrives after the
-            // glide would otherwise leave the panel, backdrop and all, on screen until the app is relaunched. By then the real
-            // windows are already in place, so taking it down at once is invisible; only the normal path gets the fade.
+            // The overlay never outlives the operation. On a cancellation after the glide the real windows are already in
+            // place, so the panel comes down at once; only the normal path fades it out.
             if let animator = snapshotAnimator, !overlayHandedOff {
                 runOnMainSync { animator.cancel() }
             }
@@ -808,7 +807,7 @@ final class AnimatedReflowOperation<Window: WindowType>: Operation, @unchecked S
         }
 
         // Nothing on screen moves again until the render server resumes, so late corrections and dissolves could neither be
-        // seen nor report back; requesting them would only add their wait timeouts to a reflow that is already late.
+        // seen nor report back; none are requested.
         guard !stalled else {
             return true
         }
@@ -839,8 +838,7 @@ final class AnimatedReflowOperation<Window: WindowType>: Operation, @unchecked S
             // to placement and the settle.
             let steerable = pendingSteer.filter { writer(for: participants[$0].pid).isIdle }
             if !steerable.isEmpty {
-                // A semaphore rather than a group: the wait below is bounded, and a semaphore that was never signalled can be
-                // dropped afterwards, whereas a group destroyed while still entered aborts the process.
+                // The wait below is bounded; a semaphore that was never signalled is simply dropped afterwards.
                 let correctionDone = DispatchSemaphore(value: 0)
                 let corrected = steerToAcceptedFrames(animator, &participants, indices: steerable.sorted(), duration: lateCorrectionDuration) { correctionDone.signal() }
                 timings.corrected += corrected
@@ -1097,8 +1095,8 @@ final class AnimatedReflowOperation<Window: WindowType>: Operation, @unchecked S
         writers.values.forEach { $0.resetStatistics() }
 
         // Applications may keep a different size than assigned; the glide must clamp and land with the size they kept. A
-        // window whose application has not applied the resize yet still reports its old size, and adopting that would
-        // send the old size back with every glide frame; the size asked for stays in force until the resize lands.
+        // window whose application has not applied the resize yet still reports its old size, so the size asked for
+        // stays in force until the resize lands.
         for index in participants.indices where participants[index].resizable && writer(for: participants[index].pid).isIdle {
             guard let accepted = FrameInterpolation.readable(participants[index].window.frame()) else {
                 continue

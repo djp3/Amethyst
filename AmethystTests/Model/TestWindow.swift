@@ -18,7 +18,7 @@ final class TestWindow: WindowType {
 
     private let element: SIAccessibilityElement?
     /// Unique for the life of the test process: the animation code keys its registry, captures and remembered positions on
-    /// this identifier, and two windows drawing the same number by chance would be confused for one another.
+    /// this identifier.
     private let cgWindowID = TestWindow.nextWindowID()
     private let uuid = UUID().uuidString
 

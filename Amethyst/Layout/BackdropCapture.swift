@@ -19,7 +19,7 @@ import Foundation
 final class BackdropCapturer: @unchecked Sendable {
     static let shared = BackdropCapturer()
 
-    /// Guards `content` and `fetch`. A queue rather than a lock so the fetch task can update state without blocking.
+    /// Guards `content` and `fetch`; the fetch task updates them without blocking.
     private let stateQueue = DispatchQueue(label: "Amethyst.BackdropCapturer.state")
     private var content: SCShareableContent?
     private var fetch: Task<SCShareableContent?, Never>?

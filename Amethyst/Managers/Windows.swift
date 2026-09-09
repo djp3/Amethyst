@@ -32,7 +32,7 @@ extension WindowManager {
             return windows.filter { isWindow($0, on: screen, attachedScreenIDs: attachedScreenIDs) }
         }
 
-        /// The identifiers of the screens currently attached, computed once per query rather than once per window.
+        /// The identifiers of the screens currently attached, computed once per query.
         private static func attachedScreenIDs() -> Set<String> {
             return Set(Screen.availableScreens.compactMap { $0.screenID() })
         }

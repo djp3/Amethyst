@@ -227,7 +227,7 @@ enum ScreenCapturePermission {
         return true
     }
 
-    /// Remembers that Amethyst's own hint about the permission has been shown, since it must not become a nag: macOS prompts only once ever, so a denial would otherwise bring the hint back on every launch.
+    /// Remembers that Amethyst's own hint about the permission has been shown. macOS prompts only once ever, and the hint is shown once as well.
     static let hintShownKey = "screen-recording-hint-shown"
 
     /// How long the hint stays up, long enough to read a sentence.
