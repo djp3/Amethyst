@@ -148,13 +148,14 @@ class AnimatedReflowOperationTests: QuickSpec {
         animator: FakeSnapshotAnimator,
         capture: @escaping ([WindowCaptureRequest]) -> [CGImage]?,
         backdrop: ((CGRect, [CGWindowID]) -> CGImage?)? = nil,
-        screenID: String? = nil
+        screenID: String? = nil,
+        writesInline: Bool = true
     ) -> AnimatedReflowOperation<TestWindow> {
         return AnimatedReflowOperation(
             frameAssignmentOperations: fixture.operations,
             duration: duration,
             frameInterval: frameInterval,
-            writesInline: true,
+            writesInline: writesInline,
             captureImages: capture,
             captureBackdrop: backdrop,
             makeSnapshotAnimator: { animator },
@@ -666,6 +667,26 @@ class AnimatedReflowOperationTests: QuickSpec {
                 expect(window.frame()) == onScreen
                 expect(animator.retargetedFrames.count) == 1
                 expect(animator.retargetedFrames[0][0]) == onScreen
+            }
+
+            it("does not correct a window whose application has still not applied its frame when the glide ends") {
+                let fixture = self.makeFixture(startFrames: startFrames, targetFrames: targetFrames)
+                // Window 1's application takes longer than the whole animation to apply the in-place frame.
+                fixture.windows[1].animationFrameDelay = 0.6
+                let clock = FakeClock()
+                let animator = FakeSnapshotAnimator()
+                let operation = self.makeSnapshotOperation(fixture, clock: clock, animator: animator, capture: captureAll, backdrop: { _, _ in
+                    AnimatedReflowOperationTests.makeImage(width: 4, height: 4)
+                }, writesInline: false)
+
+                operation.main()
+
+                // Reading it back now would return its old frame; no correction may be issued for it.
+                expect(animator.retargetedFrames.flatMap { $0 }.compactMap { $0 }).to(beEmpty())
+                expect(animator.finishCalled).to(beTrue())
+
+                // Let the slow writer finish before the windows go away.
+                Thread.sleep(forTimeInterval: 0.7)
             }
 
             it("steers a proxy to where its window actually lands when the application refuses a position") {

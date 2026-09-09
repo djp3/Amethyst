@@ -700,15 +700,21 @@ final class AnimatedReflowOperation<Window: WindowType>: Operation, @unchecked S
 
         if !pendingSteer.isEmpty {
             waitForWriters(timeout: 0.2)
-            let group = DispatchGroup()
-            group.enter()
-            let corrected = steerToAcceptedFrames(animator, &participants, indices: pendingSteer.sorted(), duration: lateCorrectionDuration) { group.leave() }
-            timings.corrected += corrected
-            if corrected == 0 {
-                group.leave()
+            // As during the glide, only a window whose application has applied its frame can be read back truthfully; one still
+            // waiting on its application would report its old frame and be steered back to where it started. Those are left
+            // to placement and the settle.
+            let steerable = pendingSteer.filter { writer(for: participants[$0].pid).isIdle }
+            if !steerable.isEmpty {
+                let group = DispatchGroup()
+                group.enter()
+                let corrected = steerToAcceptedFrames(animator, &participants, indices: steerable.sorted(), duration: lateCorrectionDuration) { group.leave() }
+                timings.corrected += corrected
+                if corrected == 0 {
+                    group.leave()
+                }
+                refinements.append(group)
+                recapture.formUnion(steerable.filter { refinesInPlace && resizedIndexSet.contains($0) })
             }
-            refinements.append(group)
-            recapture.formUnion(pendingSteer.filter { refinesInPlace && resizedIndexSet.contains($0) })
         }
 
         guard !recapture.isEmpty else {
