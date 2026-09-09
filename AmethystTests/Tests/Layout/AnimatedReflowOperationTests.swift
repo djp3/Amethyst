@@ -208,12 +208,12 @@ class AnimatedReflowOperationTests: QuickSpec {
         return Fixture(windows: windows, operations: operations)
     }
 
-    private func makeOperation(_ fixture: Fixture, clock: FakeClock) -> AnimatedReflowOperation<TestWindow> {
+    private func makeOperation(_ fixture: Fixture, clock: FakeClock, writesInline: Bool = true) -> AnimatedReflowOperation<TestWindow> {
         return AnimatedReflowOperation(
             frameAssignmentOperations: fixture.operations,
             duration: duration,
             frameInterval: frameInterval,
-            writesInline: true,
+            writesInline: writesInline,
             now: clock.now,
             sleep: clock.sleep
         )
@@ -1241,6 +1241,40 @@ class AnimatedReflowOperationTests: QuickSpec {
                 expect(operation.tickCount) == 3
                 // The glide stops, but the window is left at its tile rather than mid-way, since no reflow may follow.
                 expect(fixture.windows[1].frame()) == fixture.operations[1].frameAssignment.finalFrame
+            }
+
+            it("leaves windows at their tiles when cancelled right after the in-place resize") {
+                let fixture = self.makeFixture(startFrames: startFrames, targetFrames: targetFrames)
+                let clock = FakeClock()
+                var operation: AnimatedReflowOperation<TestWindow>!
+                // The first frame any window receives is its in-place resize; a new reflow cancels the moment it lands.
+                fixture.windows[0].onAnimationFrame = { _ in operation.cancel() }
+                operation = self.makeOperation(fixture, clock: clock)
+
+                operation.main()
+
+                expect(operation.tickCount) == 0
+                expect(fixture.windows.map { $0.frame() }) == fixture.operations.map { $0.frameAssignment.finalFrame }
+            }
+
+            it("leaves windows at their tiles when cancelled while waiting for a slow application after the glide") {
+                let fixture = self.makeFixture(startFrames: startFrames, targetFrames: targetFrames)
+                let clock = FakeClock()
+                var operation: AnimatedReflowOperation<TestWindow>!
+                let slow = fixture.windows[1]
+                // The glide runs on the fake clock in an instant, so the second frame the slow window receives, its first
+                // glide frame, lands while the operation is already waiting for the application after the glide.
+                slow.animationFrameDelay = 0.1
+                slow.onAnimationFrame = { _ in
+                    slow.onAnimationFrame = { _ in operation.cancel() }
+                }
+                operation = self.makeOperation(fixture, clock: clock, writesInline: false)
+
+                operation.main()
+
+                expect(operation.isCancelled).to(beTrue())
+                expect(slow.frame().origin) == fixture.operations[1].frameAssignment.finalFrame.origin
+                expect(fixture.windows[0].frame()) == fixture.operations[0].frameAssignment.finalFrame
             }
 
             it("keeps the focused window on screen") {

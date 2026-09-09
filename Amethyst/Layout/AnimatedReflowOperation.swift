@@ -541,13 +541,21 @@ final class AnimatedReflowOperation<Window: WindowType>: Operation, @unchecked S
                 resizeInPlace(&participants)
                 let resizeDuration = now() - resizeStart
 
-                guard !isCancelled, animate(&participants, resizeDuration: resizeDuration) else {
+                // A cancel now, with every window resized but still at its old position, must leave the windows at their
+                // tiles just as a cancel mid-glide does: the reflow that cancelled may not move them.
+                guard !isCancelled else {
+                    abandonPendingWrites(&participants)
+                    return
+                }
+                guard animate(&participants, resizeDuration: resizeDuration) else {
                     return
                 }
             }
         }
 
+        // The same holds for a cancel that arrived while waiting for a slow application after the glide.
         guard !isCancelled else {
+            abandonPendingWrites(&participants)
             return
         }
 
