@@ -161,9 +161,15 @@ final class BackdropCapturer: @unchecked Sendable {
             }
 
             let scale = pixelScale(forWindowFrame: request.frame, displayBounds: displayBounds)
+            let width = request.frame.width * scale
+            let height = request.frame.height * scale
+            guard width.isFinite, height.isFinite, width >= 1, height >= 1 else {
+                return nil
+            }
+
             let configuration = SCStreamConfiguration()
-            configuration.width = Int(request.frame.width * scale)
-            configuration.height = Int(request.frame.height * scale)
+            configuration.width = Int(width)
+            configuration.height = Int(height)
             configuration.showsCursor = false
             configuration.captureResolution = .best
             let filter = SCContentFilter(desktopIndependentWindow: window)

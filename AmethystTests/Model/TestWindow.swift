@@ -42,8 +42,11 @@ final class TestWindow: WindowType {
         return cgWindowID
     }
 
+    /// Simulates an application that cannot answer, the way a hung app or a closed window does: frame reads return the null rect.
+    var frameIsUnreadable = false
+
     func frame() -> CGRect {
-        return _frame
+        return frameIsUnreadable ? .null : _frame
     }
 
     func screen() -> Screen? {

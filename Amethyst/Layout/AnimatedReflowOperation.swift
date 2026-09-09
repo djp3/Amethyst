@@ -55,6 +55,18 @@ enum FrameInterpolation {
     static func integral(_ rect: CGRect) -> CGRect {
         return interpolate(from: rect, to: rect, progress: 0)
     }
+
+    /**
+     A live window frame rounded to integral points, or `nil` if it could not be read.
+
+     An accessibility frame read fails when the application is hung or the window has gone, and Silica reports that as the null rect, whose coordinates are infinite. Doing arithmetic on it yields NaN, which traps when converted to an integer and is rejected by Core Animation, so every read goes through here.
+     */
+    static func readable(_ rect: CGRect) -> CGRect? {
+        guard !rect.isNull, !rect.isInfinite, [rect.minX, rect.minY, rect.width, rect.height].allSatisfy({ $0.isFinite }) else {
+            return nil
+        }
+        return integral(rect)
+    }
 }
 
 /**
@@ -439,8 +451,7 @@ final class AnimatedReflowOperation<Window: WindowType>: Operation, @unchecked S
     /// Reports any window whose settled frame differs from where its proxy landed; a non-empty list means the handoff shows a jump.
     private func logFinalFrameMismatches(_ participants: [Participant]) {
         let mismatches = participants.compactMap { participant -> String? in
-            let actual = FrameInterpolation.integral(participant.window.frame())
-            guard actual != participant.target else {
+            guard let actual = FrameInterpolation.readable(participant.window.frame()), actual != participant.target else {
                 return nil
             }
             return "pid \(participant.pid) proxy \(Int(participant.target.minX)),\(Int(participant.target.minY)) \(Int(participant.target.width))x\(Int(participant.target.height))"
@@ -469,8 +480,10 @@ final class AnimatedReflowOperation<Window: WindowType>: Operation, @unchecked S
                     continue
                 }
 
-                let start = FrameInterpolation.integral(window.frame())
-                let target = FrameInterpolation.integral(assignment.finalFrame)
+                // A window whose frame cannot be read is left to the settle pass, exactly as a non-animated reflow treats it.
+                guard let start = FrameInterpolation.readable(window.frame()), let target = FrameInterpolation.readable(assignment.finalFrame) else {
+                    continue
+                }
 
                 guard start != target else {
                     continue
@@ -752,7 +765,10 @@ final class AnimatedReflowOperation<Window: WindowType>: Operation, @unchecked S
         let windows = indices.map { participants[$0].window }
 
         DispatchQueue.concurrentPerform(iterations: windows.count) { position in
-            let frame = FrameInterpolation.integral(windows[position].frame())
+            // A window whose frame cannot be read keeps the target it has.
+            guard let frame = FrameInterpolation.readable(windows[position].frame()) else {
+                return
+            }
             lock.lock()
             acceptedFrames[indices[position]] = frame
             lock.unlock()
@@ -868,8 +884,8 @@ final class AnimatedReflowOperation<Window: WindowType>: Operation, @unchecked S
 
         var writes: Writes = [:]
         for index in participants.indices {
-            let visible = index < currentFrames.count ? currentFrames[index] : participants[index].target
-            let frame = CGRect(origin: FrameInterpolation.integral(visible).origin, size: participants[index].lastIssued.size)
+            let visible = index < currentFrames.count ? FrameInterpolation.readable(currentFrames[index]) ?? participants[index].target : participants[index].target
+            let frame = CGRect(origin: visible.origin, size: participants[index].lastIssued.size)
             writes[participants[index].pid, default: [:]][index] = .init(window: participants[index].window, frame: frame, includingSize: false)
             participants[index].lastIssued = frame
         }

@@ -223,6 +223,13 @@ class AnimatedReflowOperationTests: QuickSpec {
                 expect(FrameInterpolation.interpolate(from: start, to: end, progress: 1)) == end
             }
 
+            it("rejects frames that could not be read") {
+                expect(FrameInterpolation.readable(.null)).to(beNil())
+                expect(FrameInterpolation.readable(.infinite)).to(beNil())
+                expect(FrameInterpolation.readable(CGRect(x: CGFloat.nan, y: 0, width: 10, height: 10))).to(beNil())
+                expect(FrameInterpolation.readable(CGRect(x: 0.4, y: 0, width: 10.6, height: 10))) == CGRect(x: 0, y: 0, width: 11, height: 10)
+            }
+
             it("produces integral intermediate frames") {
                 let odd = CGRect(x: 1, y: 1, width: 101, height: 101)
                 let mid = FrameInterpolation.interpolate(from: start, to: odd, progress: 0.5)
@@ -644,6 +651,39 @@ class AnimatedReflowOperationTests: QuickSpec {
                 expect(animator.finishCalled).to(beTrue())
                 // Parked windows cannot be captured, so no dissolve happens in this mode.
                 expect(animator.crossfadeImages).to(beEmpty())
+            }
+
+            it("leaves out a window whose frame cannot be read and still settles it") {
+                let fixture = self.makeFixture(startFrames: startFrames, targetFrames: targetFrames)
+                fixture.windows[0].frameIsUnreadable = true
+                let clock = FakeClock()
+                let animator = FakeSnapshotAnimator()
+                let operation = self.makeSnapshotOperation(fixture, clock: clock, animator: animator, capture: captureAll)
+
+                operation.main()
+
+                // Only the readable window animates; the other gets the settle pass alone, as in a non-animated reflow.
+                expect(animator.shownProxies.count) == 1
+                expect(fixture.windows[0].frameHistory.count) == 1
+                expect(fixture.windows[1].frame()) == fixture.operations[1].frameAssignment.finalFrame
+            }
+
+            it("keeps a window's target when its frame becomes unreadable mid-animation") {
+                let fixture = self.makeFixture(startFrames: startFrames, targetFrames: targetFrames)
+                let clock = FakeClock()
+                let animator = FakeSnapshotAnimator()
+                animator.completesImmediately = false
+                // The app stops answering right after it accepts its new frame.
+                fixture.windows[1].onAnimationFrame = { _ in fixture.windows[1].frameIsUnreadable = true }
+                let operation = self.makeSnapshotOperation(fixture, clock: clock, animator: animator, capture: captureAll, backdrop: { _, _ in
+                    AnimatedReflowOperationTests.makeImage(width: 4, height: 4)
+                })
+
+                operation.main()
+
+                // No correction and no crash: the proxy keeps its original target and the handoff still happens.
+                expect(animator.retargetedFrames.flatMap { $0 }.compactMap { $0 }).to(beEmpty())
+                expect(animator.finishCalled).to(beTrue())
             }
 
             it("takes the overlay down when cancelled after the glide but before the handoff") {
