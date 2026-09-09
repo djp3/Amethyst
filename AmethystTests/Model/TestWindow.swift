@@ -21,6 +21,10 @@ final class TestWindow: WindowType {
     private let uuid = UUID().uuidString
     private var _frame: CGRect = .zero
     var isFocusedValue = false
+    var isResizableValue = true
+
+    /// Every frame applied through `setFrame` or `setAnimationFrame`, in order.
+    private(set) var frameHistory: [CGRect] = []
 
     static func currentlyFocused() -> Self? {
         return (focused as? Self)
@@ -47,7 +51,54 @@ final class TestWindow: WindowType {
     }
 
     func setFrame(_ frame: CGRect, withThreshold threshold: CGSize) {
-        _frame = frame
+        _frame = CGRect(origin: constrained(frame.origin), size: constrained(frame.size))
+        frameHistory.append(_frame)
+    }
+
+    func isResizable() -> Bool {
+        return isResizableValue
+    }
+
+    /// Simulates a slow application: how long each animation frame write should block.
+    var animationFrameDelay: TimeInterval = 0
+
+    /// Simulates an application that refuses to grow beyond a certain size, like System Settings.
+    var maximumSize: CGSize?
+
+    /// Simulates a window kept below a certain y, the way macOS keeps windows below the menu bar.
+    var minimumY: CGFloat?
+
+    /// Simulates an application that refuses to shrink below a certain size, like Mail.
+    var minimumSize: CGSize?
+
+    private func constrained(_ size: CGSize) -> CGSize {
+        var result = size
+        if let maximumSize = maximumSize {
+            result = CGSize(width: min(result.width, maximumSize.width), height: min(result.height, maximumSize.height))
+        }
+        if let minimumSize = minimumSize {
+            result = CGSize(width: max(result.width, minimumSize.width), height: max(result.height, minimumSize.height))
+        }
+        return result
+    }
+
+    private func constrained(_ origin: CGPoint) -> CGPoint {
+        guard let minimumY = minimumY else {
+            return origin
+        }
+        return CGPoint(x: origin.x, y: max(origin.y, minimumY))
+    }
+
+    func setAnimationFrame(_ frame: CGRect, includingSize: Bool) {
+        if animationFrameDelay > 0 {
+            Thread.sleep(forTimeInterval: animationFrameDelay)
+        }
+        _frame = CGRect(origin: constrained(frame.origin), size: includingSize ? constrained(frame.size) : _frame.size)
+        frameHistory.append(_frame)
+    }
+
+    func clearFrameHistory() {
+        frameHistory.removeAll()
     }
 
     func isFocused() -> Bool {

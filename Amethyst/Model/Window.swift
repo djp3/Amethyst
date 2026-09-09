@@ -6,6 +6,7 @@
 //  Copyright © 2019 Ian Ynda-Hummel. All rights reserved.
 //
 
+import ApplicationServices
 import Foundation
 import Silica
 
@@ -63,6 +64,26 @@ protocol WindowType: Equatable {
      */
 
     func setFrame(_ frame: CGRect, withThreshold threshold: CGSize)
+
+    /// Whether or not the window can be resized.
+    func isResizable() -> Bool
+
+    /**
+     Applies a frame with the minimum number of accessibility calls: no read-back and no threshold checks.
+
+     Intended only for intermediate frames during an animated reflow. The final frame must still be applied with `setFrame(_:withThreshold:)`, which handles the finicky accessibility behavior that this method deliberately skips.
+
+     - Parameters:
+         - frame: The frame to apply.
+         - includingSize: Whether to apply the size as well as the position. Resizes force a relayout in the target application and are far more expensive than moves.
+     */
+    func setAnimationFrame(_ frame: CGRect, includingSize: Bool)
+
+    /// Called once before a sequence of `setAnimationFrame(_:includingSize:)` calls.
+    func beginAnimatedMovement()
+
+    /// Called once after a sequence of `setAnimationFrame(_:includingSize:)` calls, whether or not the animation completed.
+    func endAnimatedMovement()
 
     /// Whether or not the window is currently holding focus.
     func isFocused() -> Bool
@@ -134,6 +155,11 @@ protocol WindowType: Equatable {
     func move(toSpace spaceID: CGSSpaceID)
 }
 
+extension WindowType {
+    func beginAnimatedMovement() {}
+    func endAnimatedMovement() {}
+}
+
 enum WindowDecodingError: Error {
     case idNotFound
 }
@@ -143,7 +169,10 @@ enum WindowDecodingError: Error {
  
  A final class is necessary for satisfying the `focusedWindow()` requirement in the `WindowType` protocol. Otherwise, as `SIWindow` is not final, the type system does not know how to constrain `Self`.
  */
-final class AXWindow: SIWindow {}
+final class AXWindow: SIWindow {
+    /// Whether this window cleared its application's enhanced user interface flag for an animation and must restore it afterwards.
+    fileprivate var clearedEnhancedUserInterface = false
+}
 
 /**
  Identifier for `AXWindow` objects.
@@ -218,6 +247,43 @@ extension AXWindowID: CustomStringConvertible {
 extension AXWindow: WindowType {
     typealias Screen = AMScreen
     typealias WindowID = AXWindowID
+
+    /// Some assistive apps set this attribute on applications. Silica clears it around every frame change because it interferes with positioning; an animation clears it once up front instead.
+    private static let enhancedUserInterfaceKey = "AXEnhancedUserInterface" as CFString
+
+    func setAnimationFrame(_ frame: CGRect, includingSize: Bool) {
+        var origin = frame.origin
+        if let positionValue = AXValueCreate(.cgPoint, &origin) {
+            AXUIElementSetAttributeValue(axElementRef, kAXPositionAttribute as CFString, positionValue)
+        }
+
+        guard includingSize else {
+            return
+        }
+
+        var size = frame.size
+        if let sizeValue = AXValueCreate(.cgSize, &size) {
+            AXUIElementSetAttributeValue(axElementRef, kAXSizeAttribute as CFString, sizeValue)
+        }
+    }
+
+    func beginAnimatedMovement() {
+        guard let application = app(), application.number(forKey: AXWindow.enhancedUserInterfaceKey)?.boolValue == true else {
+            return
+        }
+
+        application.setFlag(false, forKey: AXWindow.enhancedUserInterfaceKey)
+        clearedEnhancedUserInterface = true
+    }
+
+    func endAnimatedMovement() {
+        guard clearedEnhancedUserInterface else {
+            return
+        }
+
+        clearedEnhancedUserInterface = false
+        app()?.setFlag(true, forKey: AXWindow.enhancedUserInterfaceKey)
+    }
 
     /**
      Returns the currently focused window.

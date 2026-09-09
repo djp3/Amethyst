@@ -9,6 +9,19 @@
 import Foundation
 import Silica
 
+/**
+ Runs `block` synchronously on the main thread.
+
+ Frame application happens on the main thread, but reflow operations execute on a background queue. Executing inline when already on main means callers (including tests that drive operations directly) never deadlock.
+ */
+func runOnMainSync(_ block: () -> Void) {
+    if Thread.isMainThread {
+        block()
+    } else {
+        DispatchQueue.main.sync(execute: block)
+    }
+}
+
 /// Possible dimensions without constraints.
 enum UnconstrainedDimension: Int {
     /// The dimension along the x-axis.
@@ -93,12 +106,21 @@ struct WindowSet<Window: WindowType> {
         return isWindowWithIDFloating(window.id)
     }
 
-    func perform(frameAssignment: FrameAssignment<Window>) {
+    /// Resolves the live window for a frame assignment, or `nil` if the window is gone, inactive, or floating.
+    func window(for frameAssignment: FrameAssignment<Window>) -> Window? {
         guard let window = windowForID(frameAssignment.window.id) else {
-            return
+            return nil
         }
 
         guard isWindowWithIDActive(frameAssignment.window.id), !isWindowWithIDFloating(frameAssignment.window.id) else {
+            return nil
+        }
+
+        return window
+    }
+
+    func perform(frameAssignment: FrameAssignment<Window>) {
+        guard let window = window(for: frameAssignment) else {
             return
         }
 
@@ -215,7 +237,7 @@ struct FrameAssignment<Window: WindowType> {
             // Just resize the window first to see what the dimensions end up being
             // Sometimes applications have internal window requirements that are not exposed to us directly
             finalFrame.origin = window.frame().origin
-            DispatchQueue.main.sync {
+            runOnMainSync {
                 window.setFrame(finalFrame, withThreshold: CGSize(width: 1, height: 1))
             }
 
@@ -230,7 +252,7 @@ struct FrameAssignment<Window: WindowType> {
 
         // Move the window to its final frame
         finalFrame.origin = finalOrigin
-        DispatchQueue.main.sync {
+        runOnMainSync {
             window.setFrame(finalFrame, withThreshold: CGSize(width: 1, height: 1))
         }
     }

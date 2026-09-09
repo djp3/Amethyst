@@ -374,6 +374,14 @@ extension WindowManager {
         }
     }
 
+    func displayAnimateWindowsHUD() {
+        let state = userConfiguration.animatesWindowMovement() ? "On" : "Off"
+
+        for screenManager in screens.screenManagers {
+            screenManager.displayCustomHUD(title: "Window Animation: \(state)")
+        }
+    }
+
     func add(runningApplication: NSRunningApplication) {
         switch runningApplication.isManageable {
         case .manageable:
@@ -683,6 +691,11 @@ extension WindowManager {
         mouseStateKeeper.handleReflowEvent()
     }
 
+    /// Whether any screen is still applying, or animating, a reflow.
+    private var isReflowInProgress: Bool {
+        return screens.screenManagers.contains { $0.isReflowInProgress }
+    }
+
     func onReflowCompletion() {
 //        if let focusedWindow = Window.currentlyFocused() {
 //            doMouseFollowsFocus(focusedWindow: focusedWindow)
@@ -809,6 +822,11 @@ extension WindowManager: ApplicationObservationDelegate {
             return
         }
 
+        // Our own reflows, especially animated ones, generate move notifications that must not be mistaken for user drags
+        guard !isReflowInProgress else {
+            return
+        }
+
         guard let screen = window.screen(), activeWindows(on: screen).contains(window) else {
             return
         }
@@ -836,6 +854,11 @@ extension WindowManager: ApplicationObservationDelegate {
 
     func application(_ application: AnyApplication<Application>, didResizeWindow window: Window) {
         guard userConfiguration.mouseResizesWindows() else {
+            return
+        }
+
+        // Intermediate animation frames would otherwise be read back as a user-driven main pane ratio
+        guard !isReflowInProgress else {
             return
         }
 

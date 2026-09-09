@@ -28,7 +28,15 @@ extension WindowManager {
         }
 
         func windows(onScreen screen: Screen) -> [Window] {
-            return windows.filter { $0.screen() == screen }
+            return windows.filter { isWindow($0, on: screen) }
+        }
+
+        /// A window being animated by a screen's reflow belongs to that screen even while it briefly straddles another display.
+        private func isWindow(_ window: Window, on screen: Screen) -> Bool {
+            if let animatingScreenID = AnimatingWindows.shared.screenID(for: window.cgID()), let screenID = screen.screenID() {
+                return animatingScreenID == screenID
+            }
+            return window.screen() == screen
         }
 
         func activeWindows(onScreen screen: Screen) -> [Window] {
@@ -44,7 +52,7 @@ extension WindowManager {
             let screenWindows = windows.filter { window in
                 let space = CGWindowsInfo.windowSpace(window)
 
-                guard let windowScreen = window.screen(), currentSpace.id == space else {
+                guard currentSpace.id == space, isWindow(window, on: screen) else {
                     return false
                 }
 
@@ -52,7 +60,7 @@ extension WindowManager {
                 let isHidden = self.isWindowHidden(window)
                 let isFloating = self.isWindowFloating(window)
 
-                return windowScreen.screenID() == screen.screenID() && isActive && !isHidden && !isFloating
+                return isActive && !isHidden && !isFloating
             }
 
             return screenWindows

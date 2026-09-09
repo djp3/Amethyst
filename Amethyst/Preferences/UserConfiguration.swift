@@ -99,6 +99,8 @@ enum ConfigurationKey: String {
     case restoreLayoutsOnLaunch = "restore-layouts-on-launch"
     case disablePaddingOnBuiltinDisplay = "disable-padding-on-builtin-display"
     case hideMenuBarIcon = "hide-menu-bar-icon"
+    case animateWindows = "animate-windows"
+    case windowAnimationDuration = "window-animation-duration"
 }
 
 extension ConfigurationKey: CaseIterable {}
@@ -139,6 +141,7 @@ enum CommandKey: String {
     case relaunchAmethyst = "relaunch-amethyst"
     case increaseWindowMaxCount = "increase-window-max-count"
     case decreaseWindowMaxCount = "decrease-window-max-count"
+    case toggleAnimateWindows = "toggle-animate-windows"
 }
 
 protocol UserConfigurationDelegate: AnyObject {
@@ -763,6 +766,29 @@ class UserConfiguration: NSObject {
 
     func hideMenuBarIcon() -> Bool {
         return storage.bool(forKey: .hideMenuBarIcon)
+    }
+
+    static let defaultWindowAnimationDuration: TimeInterval = 0.3
+    static let minimumWindowAnimationDuration: TimeInterval = 0.05
+    static let maximumWindowAnimationDuration: TimeInterval = 1.0
+
+    func animatesWindowMovement() -> Bool {
+        return storage.bool(forKey: .animateWindows)
+    }
+
+    /// Duration of an animated reflow in seconds, clamped to a sane range. An unset value falls back to the default rather than the minimum.
+    func windowAnimationDuration() -> TimeInterval {
+        let configured = TimeInterval(storage.float(forKey: .windowAnimationDuration))
+
+        guard configured > 0 else {
+            return UserConfiguration.defaultWindowAnimationDuration
+        }
+
+        return min(max(configured, UserConfiguration.minimumWindowAnimationDuration), UserConfiguration.maximumWindowAnimationDuration)
+    }
+
+    func toggleAnimateWindows() {
+        setConfigurationValueWithKVO(!animatesWindowMovement(), forKey: .animateWindows)
     }
 }
 
