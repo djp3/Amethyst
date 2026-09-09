@@ -54,7 +54,8 @@ final class TestWindow: WindowType {
     }
 
     func setFrame(_ frame: CGRect, withThreshold threshold: CGSize) {
-        _frame = CGRect(origin: constrained(frame.origin), size: constrained(frame.size))
+        // Like Silica, a window that cannot be resized only takes the position.
+        _frame = CGRect(origin: constrained(frame.origin), size: isResizableValue ? constrained(frame.size) : _frame.size)
         frameHistory.append(_frame)
     }
 
@@ -99,7 +100,7 @@ final class TestWindow: WindowType {
         if animationFrameDelay > 0 {
             Thread.sleep(forTimeInterval: animationFrameDelay)
         }
-        _frame = CGRect(origin: constrained(frame.origin), size: includingSize ? constrained(frame.size) : _frame.size)
+        _frame = CGRect(origin: constrained(frame.origin), size: includingSize && isResizableValue ? constrained(frame.size) : _frame.size)
         frameHistory.append(_frame)
         onAnimationFrame?(_frame)
     }

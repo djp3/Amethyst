@@ -689,6 +689,22 @@ class AnimatedReflowOperationTests: QuickSpec {
                 Thread.sleep(forTimeInterval: 0.7)
             }
 
+            it("aims a non-resizable window's proxy at the tile position with the window's own size, in parked mode too") {
+                let fixture = self.makeFixture(startFrames: startFrames, targetFrames: targetFrames)
+                let fixed = fixture.windows[1]
+                fixed.isResizableValue = false
+                let clock = FakeClock()
+                let animator = FakeSnapshotAnimator()
+                let operation = self.makeSnapshotOperation(fixture, clock: clock, animator: animator, capture: captureAll)
+
+                operation.main()
+
+                // The window only ever moves, so both its picture and its final frame use its original size.
+                let expected = CGRect(origin: fixture.operations[1].frameAssignment.finalFrame.origin, size: startFrames[1].size)
+                expect(animator.shownProxies[1].target) == expected
+                expect(fixed.frame()) == expected
+            }
+
             it("steers a proxy to where its window actually lands when the application refuses a position") {
                 let fixture = self.makeFixture(startFrames: [CGRect(x: 0, y: 500, width: 1000, height: 500)], targetFrames: [CGRect(x: 0, y: 0, width: 1000, height: 500)])
                 let window = fixture.windows[0]

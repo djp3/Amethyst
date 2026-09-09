@@ -519,9 +519,16 @@ final class AnimatedReflowOperation<Window: WindowType>: Operation, @unchecked S
                 }
 
                 // A window whose frame cannot be read is left to the settle pass, exactly as a non-animated reflow treats it.
-                guard let start = FrameInterpolation.readable(window.frame()), let target = FrameInterpolation.readable(assignment.finalFrame) else {
+                guard let start = FrameInterpolation.readable(window.frame()), let assigned = FrameInterpolation.readable(assignment.finalFrame) else {
                     continue
                 }
+
+                // A window that cannot be resized will only ever be moved, so its picture is aimed at the tile's position with
+                // the window's own size, where the settle pass will actually leave it.
+                let resizable = window.isResizable()
+                let target = resizable
+                    ? assigned
+                    : FrameInterpolation.integral(assignment.keepingFocusedWindowOnScreen(CGRect(origin: assigned.origin, size: start.size)))
 
                 guard start != target else {
                     continue
@@ -535,7 +542,7 @@ final class AnimatedReflowOperation<Window: WindowType>: Operation, @unchecked S
                     start: start,
                     visualStart: AnimatingWindows.shared.takeLastSeenFrame(for: window.cgID(), at: now()) ?? start,
                     target: target,
-                    resizable: window.isResizable(),
+                    resizable: resizable,
                     lastIssued: start
                 ))
             }
