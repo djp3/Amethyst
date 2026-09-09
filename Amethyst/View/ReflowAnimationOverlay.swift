@@ -80,9 +80,9 @@ final class ReflowAnimationOverlay: SnapshotAnimating {
     /// Marks the overlay's panel so stray ones can be found, for example by tests.
     static let panelIdentifier = NSUserInterfaceItemIdentifier("AmethystReflowAnimationOverlay")
 
-    /// How many overlay panels the application currently has on screen.
+    /// How many overlay panels the application currently has on screen. A closed panel may stay allocated for a while, held by AppKit; only visible ones count.
     static var livePanelCount: Int {
-        return NSApplication.shared.windows.filter { $0.identifier == panelIdentifier }.count
+        return NSApplication.shared.windows.filter { $0.identifier == panelIdentifier && $0.isVisible }.count
     }
 
     private var panel: NSPanel?
