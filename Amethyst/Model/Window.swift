@@ -170,8 +170,68 @@ enum WindowDecodingError: Error {
  A final class is necessary for satisfying the `focusedWindow()` requirement in the `WindowType` protocol. Otherwise, as `SIWindow` is not final, the type system does not know how to constrain `Self`.
  */
 final class AXWindow: SIWindow {
-    /// Whether this window cleared its application's enhanced user interface flag for an animation and must restore it afterwards.
-    fileprivate var clearedEnhancedUserInterface = false
+    /// The application this window registered with `EnhancedUserInterfaceSuppression` for an animation, until it deregisters.
+    fileprivate var suppressedApplicationPID: pid_t?
+}
+
+/**
+ Keeps an application's enhanced user interface flag cleared for as long as any of its windows is being animated.
+
+ The flag belongs to the application, not to a window. When windows of one application animate on several screens at once, each
+ screen's operation begins and ends on its own, so the flag is cleared for the first window to begin and restored only when the
+ last window ends. The flag is read and written under the lock so that two screens cannot interleave a clear and a restore.
+ */
+final class EnhancedUserInterfaceSuppression {
+    static let shared = EnhancedUserInterfaceSuppression()
+
+    private let lock = NSLock()
+    private var animatingWindows: [pid_t: Int] = [:]
+    private var clearedApplications: Set<pid_t> = []
+
+    /**
+     Registers a window of the application as animating.
+
+     - Parameters:
+         - pid: The application's process identifier.
+         - clear: Invoked for the application's first animating window; clears the flag if it is set and returns whether it did.
+     */
+    func begin(for pid: pid_t, clear: () -> Bool) {
+        lock.lock()
+        defer { lock.unlock() }
+
+        let count = (animatingWindows[pid] ?? 0) + 1
+        animatingWindows[pid] = count
+
+        if count == 1, clear() {
+            clearedApplications.insert(pid)
+        }
+    }
+
+    /**
+     Registers that a window of the application has finished animating.
+
+     - Parameters:
+         - pid: The application's process identifier.
+         - restore: Invoked when the application's last animating window ends and the flag had been cleared for it.
+     */
+    func end(for pid: pid_t, restore: () -> Void) {
+        lock.lock()
+        defer { lock.unlock() }
+
+        guard let count = animatingWindows[pid] else {
+            return
+        }
+
+        guard count == 1 else {
+            animatingWindows[pid] = count - 1
+            return
+        }
+
+        animatingWindows[pid] = nil
+        if clearedApplications.remove(pid) != nil {
+            restore()
+        }
+    }
 }
 
 /**
@@ -248,7 +308,7 @@ extension AXWindow: WindowType {
     typealias Screen = AMScreen
     typealias WindowID = AXWindowID
 
-    /// Some assistive apps set this attribute on applications. Silica clears it around every frame change because it interferes with positioning; an animation clears it once up front instead.
+    /// Some assistive apps set this attribute on applications. Silica clears it around every frame change because it interferes with positioning; an animation keeps it cleared for as long as any of the application's windows is animating instead.
     private static let enhancedUserInterfaceKey = "AXEnhancedUserInterface" as CFString
 
     func setAnimationFrame(_ frame: CGRect, includingSize: Bool) {
@@ -268,21 +328,32 @@ extension AXWindow: WindowType {
     }
 
     func beginAnimatedMovement() {
-        guard let application = app(), application.number(forKey: AXWindow.enhancedUserInterfaceKey)?.boolValue == true else {
+        guard suppressedApplicationPID == nil, let application = app() else {
             return
         }
 
-        application.setFlag(false, forKey: AXWindow.enhancedUserInterfaceKey)
-        clearedEnhancedUserInterface = true
+        let pid = application.processIdentifier()
+        suppressedApplicationPID = pid
+        EnhancedUserInterfaceSuppression.shared.begin(for: pid) {
+            guard application.number(forKey: AXWindow.enhancedUserInterfaceKey)?.boolValue == true else {
+                return false
+            }
+
+            application.setFlag(false, forKey: AXWindow.enhancedUserInterfaceKey)
+            return true
+        }
     }
 
     func endAnimatedMovement() {
-        guard clearedEnhancedUserInterface else {
+        guard let pid = suppressedApplicationPID else {
             return
         }
 
-        clearedEnhancedUserInterface = false
-        app()?.setFlag(true, forKey: AXWindow.enhancedUserInterfaceKey)
+        suppressedApplicationPID = nil
+        let application = app()
+        EnhancedUserInterfaceSuppression.shared.end(for: pid) {
+            application?.setFlag(true, forKey: AXWindow.enhancedUserInterfaceKey)
+        }
     }
 
     /**
