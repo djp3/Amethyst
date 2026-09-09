@@ -368,6 +368,16 @@ class AnimatedReflowOperationTests: QuickSpec {
                 expect(registry.screenID(for: 1)).to(beNil())
                 expect(registry.screenID(for: 2)).to(beNil())
             }
+
+            it("reports only the windows an animation is moving, so other windows' move notifications count as gestures") {
+                let registry = AnimatingWindows()
+                registry.claim([7], for: "external")
+                expect(registry.isAnimating(7)).to(beTrue())
+                expect(registry.isAnimating(8)).to(beFalse())
+
+                registry.release([7], for: "external")
+                expect(registry.isAnimating(7)).to(beFalse())
+            }
         }
 
         describe("snapshot animation") {

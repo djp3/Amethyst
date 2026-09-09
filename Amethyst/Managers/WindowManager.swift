@@ -691,11 +691,6 @@ extension WindowManager {
         mouseStateKeeper.handleReflowEvent()
     }
 
-    /// Whether any screen is still applying, or animating, a reflow.
-    private var isReflowInProgress: Bool {
-        return screens.screenManagers.contains { $0.isReflowInProgress }
-    }
-
     func onReflowCompletion() {
 //        if let focusedWindow = Window.currentlyFocused() {
 //            doMouseFollowsFocus(focusedWindow: focusedWindow)
@@ -822,8 +817,9 @@ extension WindowManager: ApplicationObservationDelegate {
             return
         }
 
-        // Our own reflows, especially animated ones, generate move notifications that must not be mistaken for user drags
-        guard !isReflowInProgress else {
+        // An animation's own writes generate move notifications for the windows it is moving; those are not user drags.
+        // Notifications about any other window are gestures and go through as before.
+        guard !AnimatingWindows.shared.isAnimating(window.cgID()) else {
             return
         }
 
@@ -857,8 +853,8 @@ extension WindowManager: ApplicationObservationDelegate {
             return
         }
 
-        // Intermediate animation frames would otherwise be read back as a user-driven main pane ratio
-        guard !isReflowInProgress else {
+        // Intermediate animation frames of a window being animated would otherwise be read back as a user-driven main pane ratio.
+        guard !AnimatingWindows.shared.isAnimating(window.cgID()) else {
             return
         }
 

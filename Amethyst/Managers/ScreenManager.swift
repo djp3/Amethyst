@@ -52,11 +52,6 @@ final class ScreenManager<Delegate: ScreenManagerDelegate>: NSObject, Codable {
     )
     private let reflowOperationQueue = OperationQueue()
 
-    /// Whether frame assignments from the most recent reflow are still queued or executing, including an in-flight animation.
-    var isReflowInProgress: Bool {
-        return reflowOperationQueue.operationCount > 0
-    }
-
     private var layouts: [Layout<Window>] = []
     private var currentLayoutIndexBySpaceUUID: [String: Int] = [:]
     private var layoutsBySpaceUUID: [String: [Layout<Window>]] = [:]

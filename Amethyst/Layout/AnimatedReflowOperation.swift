@@ -221,6 +221,11 @@ final class AnimatingWindows {
         defer { lock.unlock() }
         return screenIDsByWindow[windowID]
     }
+
+    /// Whether an animation is currently moving the window, so a move or resize notification about it is Amethyst's own doing rather than a user gesture.
+    func isAnimating(_ windowID: CGWindowID) -> Bool {
+        return screenID(for: windowID) != nil
+    }
 }
 
 /**
