@@ -111,7 +111,9 @@ final class ReflowAnimationOverlay: SnapshotAnimating {
         panel.ignoresMouseEvents = true
         panel.hidesOnDeactivate = false
         panel.isReleasedWhenClosed = false
-        panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle, .fullScreenAuxiliary]
+        // The panel belongs to the Space it was made on: a reflow only runs on the active Space, and a Space switch made
+        // mid-animation must carry the old Space's picture away with the old Space rather than leave it over the new one.
+        panel.collectionBehavior = [.ignoresCycle, .fullScreenAuxiliary]
         panel.sharingType = .none
         panel.animationBehavior = .none
         panel.identifier = ReflowAnimationOverlay.panelIdentifier

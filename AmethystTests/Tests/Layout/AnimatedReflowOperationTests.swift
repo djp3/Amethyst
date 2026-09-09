@@ -474,6 +474,29 @@ class AnimatedReflowOperationTests: QuickSpec {
                 expect(glideCompletions) == 1
             }
 
+            it("keeps its panel on the Space it was made on") {
+                let image = AnimatedReflowOperationTests.makeImage(width: 10, height: 10)
+                let proxy = SnapshotProxy(image: image, start: CGRect(x: 10, y: 60, width: 40, height: 40), target: CGRect(x: 80, y: 60, width: 40, height: 40))
+                let overlay: ReflowAnimationOverlay = self.onMain {
+                    let screenFrame = FlippedCoordinates.flippedRect(fromAppKit: NSScreen.screens[0].frame, primaryScreenHeight: FlippedCoordinates.primaryScreenHeight)
+                    let overlay = ReflowAnimationOverlay()
+                    overlay.show(proxies: [proxy], screenFrame: screenFrame, backdrop: nil)
+                    return overlay
+                }
+                let behavior: NSWindow.CollectionBehavior? = self.onMain {
+                    NSApplication.shared.windows.first { $0.identifier == ReflowAnimationOverlay.panelIdentifier }?.collectionBehavior
+                }
+
+                // Following every Space, or standing still through a Space switch, would leave the old Space's picture over
+                // the new one until the cancelled animation takes it down.
+                expect(behavior).toNot(beNil())
+                expect(behavior?.contains(.canJoinAllSpaces)) == false
+                expect(behavior?.contains(.stationary)) == false
+                expect(behavior?.contains(.fullScreenAuxiliary)) == true
+
+                self.onMain { overlay.cancel() }
+            }
+
             it("calls a pending completion when the overlay finishes") {
                 let image = AnimatedReflowOperationTests.makeImage(width: 10, height: 10)
                 let proxy = SnapshotProxy(image: image, start: CGRect(x: 10, y: 60, width: 40, height: 40), target: CGRect(x: 80, y: 60, width: 40, height: 40))
