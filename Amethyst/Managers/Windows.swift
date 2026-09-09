@@ -28,12 +28,22 @@ extension WindowManager {
         }
 
         func windows(onScreen screen: Screen) -> [Window] {
-            return windows.filter { isWindow($0, on: screen) }
+            let attachedScreenIDs = Windows.attachedScreenIDs()
+            return windows.filter { isWindow($0, on: screen, attachedScreenIDs: attachedScreenIDs) }
         }
 
-        /// A window being animated by a screen's reflow belongs to that screen even while it briefly straddles another display.
-        private func isWindow(_ window: Window, on screen: Screen) -> Bool {
-            if let animatingScreenID = AnimatingWindows.shared.screenID(for: window.cgID()), let screenID = screen.screenID() {
+        /// The identifiers of the screens currently attached, computed once per query rather than once per window.
+        private static func attachedScreenIDs() -> Set<String> {
+            return Set(Screen.availableScreens.compactMap { $0.screenID() })
+        }
+
+        /**
+         A window being animated by a screen's reflow belongs to that screen even while it briefly straddles another display.
+
+         A registration for a screen that is no longer attached is ignored, as the window's own screen lookup ignores it: the display was unplugged mid-animation and the windows now lie wherever macOS put them.
+         */
+        private func isWindow(_ window: Window, on screen: Screen, attachedScreenIDs: Set<String>) -> Bool {
+            if let animatingScreenID = AnimatingWindows.shared.screenID(for: window.cgID(), ifAmong: attachedScreenIDs), let screenID = screen.screenID() {
                 return animatingScreenID == screenID
             }
             return window.screen() == screen
@@ -49,10 +59,11 @@ extension WindowManager {
                 return []
             }
 
+            let attachedScreenIDs = Windows.attachedScreenIDs()
             let screenWindows = windows.filter { window in
                 let space = CGWindowsInfo.windowSpace(window)
 
-                guard currentSpace.id == space, isWindow(window, on: screen) else {
+                guard currentSpace.id == space, isWindow(window, on: screen, attachedScreenIDs: attachedScreenIDs) else {
                     return false
                 }
 

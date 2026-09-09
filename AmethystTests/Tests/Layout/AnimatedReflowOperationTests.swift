@@ -533,6 +533,14 @@ class AnimatedReflowOperationTests: QuickSpec {
                 expect(registry.screenID(for: 2)).to(beNil())
             }
 
+            it("ignores a claim by a screen that is no longer attached") {
+                let registry = AnimatingWindows()
+                registry.claim([1], for: "external")
+                expect(registry.screenID(for: 1, ifAmong: ["builtin", "external"])) == "external"
+                expect(registry.screenID(for: 1, ifAmong: ["builtin"])).to(beNil())
+                expect(registry.screenID(for: 2, ifAmong: ["builtin", "external"])).to(beNil())
+            }
+
             it("refuses a write to a window that was handed off and reports where it was headed") {
                 let registry = AnimatingWindows()
                 let target = CGRect(x: 10, y: 20, width: 300, height: 400)

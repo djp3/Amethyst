@@ -339,6 +339,11 @@ final class AnimatingWindows {
         return screenIDsByWindow[windowID]
     }
 
+    /// The screen animating the window, provided it is one of `screenIDs`, the screens currently attached. A display unplugged mid-animation keeps its claims until its operation ends, but the windows are no longer its to keep.
+    func screenID(for windowID: CGWindowID, ifAmong screenIDs: Set<String>) -> String? {
+        return screenID(for: windowID).flatMap { screenIDs.contains($0) ? $0 : nil }
+    }
+
     /// Whether an animation is currently moving the window, so a move or resize notification about it is Amethyst's own doing rather than a user gesture.
     func isAnimating(_ windowID: CGWindowID) -> Bool {
         return screenID(for: windowID) != nil
