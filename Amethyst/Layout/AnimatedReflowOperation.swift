@@ -753,6 +753,7 @@ final class AnimatedReflowOperation<Window: WindowType>: Operation, @unchecked S
         var pendingRecapture: [Int: TimeInterval] = [:]
         var retiredProxies = Set<Int>()
         var refinements: [DispatchSemaphore] = []
+        var stalled = false
         var remainingWaits = Int(((duration + 1.0) / frameInterval).rounded(.up))
 
         while finished.wait(timeout: .now()) == .timedOut {
@@ -767,6 +768,7 @@ final class AnimatedReflowOperation<Window: WindowType>: Operation, @unchecked S
             // That is not a cancellation: the motion is over as far as anyone can see, so carry on to the exact placement.
             if remainingWaits <= 0 {
                 logAnimation("Animated reflow: the glide never reported completion; settling anyway")
+                stalled = true
                 break
             }
 
@@ -803,6 +805,12 @@ final class AnimatedReflowOperation<Window: WindowType>: Operation, @unchecked S
                     pendingRecapture[index] = dissolved.contains(index) || unverifiable.contains(index) ? nil : current + redrawSettleDelay
                 }
             }
+        }
+
+        // Nothing on screen moves again until the render server resumes, so late corrections and dissolves could neither be
+        // seen nor report back; requesting them would only add their wait timeouts to a reflow that is already late.
+        guard !stalled else {
+            return true
         }
 
         refinements += finishRefinement(&participants, animator: animator, pendingSteer: pendingSteer, pendingRecapture: Set(pendingRecapture.keys), timings: &timings)

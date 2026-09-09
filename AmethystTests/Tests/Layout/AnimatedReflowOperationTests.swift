@@ -41,6 +41,8 @@ class AnimatedReflowOperationTests: QuickSpec {
         var shownScreenFrame: CGRect?
         var animateDuration: TimeInterval?
         var completesImmediately = true
+        /// Whether a mid-glide refinement stands in for the overlay reaching its target; `false` keeps the glide pending for good, as when a display is asleep.
+        var endsGlideOnRefinement = true
         var onAnimate: (() -> Void)?
         var framesToPresent: [CGRect] = []
         var finishCalled = false
@@ -74,7 +76,9 @@ class AnimatedReflowOperationTests: QuickSpec {
             crossfadeImages.append(images)
             crossfadeDurations.append(duration)
             completion?()
-            endPendingGlide()
+            if endsGlideOnRefinement {
+                endPendingGlide()
+            }
         }
 
         func animate(duration: TimeInterval, completion: @escaping () -> Void) {
@@ -97,7 +101,7 @@ class AnimatedReflowOperationTests: QuickSpec {
                 } else {
                     completion()
                 }
-            } else {
+            } else if endsGlideOnRefinement {
                 endPendingGlide()
             }
         }
@@ -1109,6 +1113,29 @@ class AnimatedReflowOperationTests: QuickSpec {
                 expect(animator.cancelCalled).to(beFalse())
                 expect(animator.finishCalled).to(beTrue())
                 expect(fixture.windows.map { $0.frame() }) == fixture.operations.map { $0.frameAssignment.finalFrame }
+            }
+
+            it("skips late corrections and dissolves once the glide has stalled") {
+                let fixture = self.makeFixture(startFrames: startFrames, targetFrames: targetFrames)
+                let clock = FakeClock()
+                let animator = FakeSnapshotAnimator()
+                // The render server never reports anything back, as when a display is asleep.
+                animator.completesImmediately = false
+                animator.endsGlideOnRefinement = false
+                let constrained = fixture.windows[1]
+                constrained.maximumSize = CGSize(width: 1200, height: 1000)
+                // Its application is busy for the whole glide, which passes in an instant on the fake clock, so its correction
+                // would only be possible afterwards, when nothing can be seen or reported any more.
+                constrained.animationFrameDelay = 0.1
+                let operation = self.makeSnapshotOperation(fixture, clock: clock, animator: animator, capture: captureAll, backdrop: { _, _ in
+                    AnimatedReflowOperationTests.makeImage(width: 4, height: 4)
+                }, writesInline: false)
+
+                operation.main()
+
+                expect(animator.finishCalled).to(beTrue())
+                expect(animator.retargetedFrames).to(beEmpty())
+                expect(animator.crossfadeImages).to(beEmpty())
             }
 
             it("takes the overlay down when cancelled after the glide but before the handoff") {
