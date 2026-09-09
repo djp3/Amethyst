@@ -713,7 +713,17 @@ class AnimatedReflowOperationTests: QuickSpec {
             let captureAll: ([WindowCaptureRequest]) -> [CGImage]? = { requests in requests.map { _ in AnimatedReflowOperationTests.makeImage() } }
 
             it("parks, resizes out of sight, places, and settles each window") {
-                let fixture = self.makeFixture(startFrames: startFrames, targetFrames: targetFrames)
+                // Windows at distinct, non-zero heights: a window parks at the parking spot's x but keeps its own y, and with
+                // everything at zero the two could not be told apart.
+                let starts = [
+                    CGRect(x: 0, y: 40, width: 1000, height: 800),
+                    CGRect(x: 1000, y: 120, width: 1000, height: 800)
+                ]
+                let targets = [
+                    CGRect(x: 0, y: 40, width: 500, height: 800),
+                    CGRect(x: 500, y: 40, width: 1500, height: 800)
+                ]
+                let fixture = self.makeFixture(startFrames: starts, targetFrames: targets)
                 let clock = FakeClock()
                 let animator = FakeSnapshotAnimator()
                 let operation = self.makeSnapshotOperation(fixture, clock: clock, animator: animator, capture: captureAll)
@@ -721,7 +731,7 @@ class AnimatedReflowOperationTests: QuickSpec {
                 operation.main()
 
                 for (index, window) in fixture.windows.enumerated() {
-                    let start = startFrames[index]
+                    let start = starts[index]
                     let target = fixture.operations[index].frameAssignment.finalFrame
                     let parked = CGPoint(x: self.parkingOrigin.x, y: start.minY)
 
