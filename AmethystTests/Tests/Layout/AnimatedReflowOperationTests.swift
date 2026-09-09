@@ -49,6 +49,7 @@ class AnimatedReflowOperationTests: QuickSpec {
         var retargetedFrames: [[CGRect?]] = []
         var retargetDurations: [TimeInterval] = []
         var shownBackdrop: CGImage?
+        var hiddenIndices: [Int] = []
         var crossfadeImages: [[CGImage?]] = []
         var crossfadeDurations: [TimeInterval] = []
         private var pendingCompletion: (() -> Void)?
@@ -104,6 +105,10 @@ class AnimatedReflowOperationTests: QuickSpec {
             completion()
         }
 
+        func hide(indices: [Int]) {
+            hiddenIndices += indices
+        }
+
         func cancel() {
             cancelCalled = true
         }
@@ -124,7 +129,8 @@ class AnimatedReflowOperationTests: QuickSpec {
         clock: FakeClock,
         animator: FakeSnapshotAnimator,
         capture: @escaping ([WindowCaptureRequest]) -> [CGImage]?,
-        backdrop: ((CGRect, [CGWindowID]) -> CGImage?)? = nil
+        backdrop: ((CGRect, [CGWindowID]) -> CGImage?)? = nil,
+        screenID: String? = nil
     ) -> AnimatedReflowOperation<TestWindow> {
         return AnimatedReflowOperation(
             frameAssignmentOperations: fixture.operations,
@@ -135,6 +141,7 @@ class AnimatedReflowOperationTests: QuickSpec {
             captureBackdrop: backdrop,
             makeSnapshotAnimator: { animator },
             parkingOrigin: { self.parkingOrigin },
+            screenID: screenID,
             now: clock.now,
             sleep: clock.sleep
         )
@@ -694,6 +701,29 @@ class AnimatedReflowOperationTests: QuickSpec {
                 // No correction and no crash: the proxy keeps its original target and the handoff still happens.
                 expect(animator.retargetedFrames.flatMap { $0 }.compactMap { $0 }).to(beEmpty())
                 expect(animator.finishCalled).to(beTrue())
+            }
+
+            it("lets go of a window Amethyst moves elsewhere mid-glide") {
+                let fixture = self.makeFixture(startFrames: startFrames, targetFrames: targetFrames)
+                let clock = FakeClock()
+                let animator = FakeSnapshotAnimator()
+                animator.completesImmediately = false
+                let thrown = fixture.windows[1]
+                // The user throws window 1 to another screen just as the glide starts.
+                animator.onAnimate = { AnimatingWindows.shared.handOff([thrown.cgID()]) }
+                let operation = self.makeSnapshotOperation(fixture, clock: clock, animator: animator, capture: captureAll, backdrop: { _, _ in
+                    AnimatedReflowOperationTests.makeImage(width: 4, height: 4)
+                }, screenID: "source")
+
+                operation.main()
+
+                // Its proxy is hidden, and it receives nothing beyond the write that had already been issued: no correction,
+                // no placement, no settle to its old tile. The other window completes normally.
+                expect(animator.hiddenIndices) == [1]
+                expect(thrown.frameHistory.count) == 1
+                expect(fixture.windows[0].frame()) == fixture.operations[0].frameAssignment.finalFrame
+                expect(animator.finishCalled).to(beTrue())
+                expect(AnimatingWindows.shared.screenID(for: fixture.windows[0].cgID())).to(beNil())
             }
 
             it("takes the overlay down when cancelled after the glide but before the handoff") {

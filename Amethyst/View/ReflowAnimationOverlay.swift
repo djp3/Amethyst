@@ -48,6 +48,9 @@ protocol SnapshotAnimating: AnyObject {
      */
     func finish(fadeDuration: TimeInterval, lingering: [Int], lingerDuration: TimeInterval, completion: @escaping () -> Void)
 
+    /// Hides individual proxies at once, for windows Amethyst has moved elsewhere mid-animation.
+    func hide(indices: [Int])
+
     /// Removes the proxies immediately.
     func cancel()
 }
@@ -315,6 +318,13 @@ final class ReflowAnimationOverlay: SnapshotAnimating {
         }
 
         CATransaction.commit()
+    }
+
+    func hide(indices: [Int]) {
+        for index in indices where index < layers.count {
+            layers[index].removeAllAnimations()
+            layers[index].isHidden = true
+        }
     }
 
     func cancel() {

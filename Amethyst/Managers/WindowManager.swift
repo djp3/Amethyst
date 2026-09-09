@@ -945,6 +945,8 @@ extension WindowManager: WindowTransitionTarget {
             markAllScreensForReflow()
         case let .moveWindowToScreen(window, screen):
             let currentScreen = window.screen()
+            // A deliberate move: any animation still moving this window must let go, and the new screen adopts it at once.
+            AnimatingWindows.shared.handOff([window.cgID()])
             window.moveScaled(to: screen)
             if currentScreen != nil {
                 distributeEventToScreen(screen, change: .remove(window: window))
@@ -967,6 +969,7 @@ extension WindowManager: WindowTransitionTarget {
             }
             distributeEventToScreen(screen, change: .remove(window: window))
             eventQueue.append(PendingEvent(screen: targetScreen, event: .add(window: window)))
+            AnimatingWindows.shared.handOff([window.cgID()])
             window.move(toSpaceAtIndex: UInt(spaceIndex + 1))
             if targetScreen.screenID() != screen.screenID() {
                 // necessary to set frame here as window is expected to be at origin relative to targe screen when moved, can be improved.

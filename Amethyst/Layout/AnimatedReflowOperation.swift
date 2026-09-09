@@ -206,6 +206,19 @@ final class AnimatingWindows {
         lock.unlock()
     }
 
+    /**
+     Drops any claim on the windows, whichever screen holds it.
+
+     Called when Amethyst itself relocates a window to another screen or Space: the animation that was moving it must stop touching it, and the destination screen must be free to adopt it at once.
+     */
+    func handOff(_ windowIDs: [CGWindowID]) {
+        lock.lock()
+        for windowID in windowIDs {
+            screenIDsByWindow[windowID] = nil
+        }
+        lock.unlock()
+    }
+
     /// Releases windows claimed for `screenID`; claims made since by another screen are left alone.
     func release(_ windowIDs: [CGWindowID], for screenID: String) {
         lock.lock()
@@ -436,8 +449,11 @@ final class AnimatedReflowOperation<Window: WindowType>: Operation, @unchecked S
             return
         }
 
-        // Settle: apply the exact final frames through the regular path, including focused-window peeking.
-        frameAssignments.forEach { windowSet.perform(frameAssignment: $0) }
+        // Settle: apply the exact final frames through the regular path, including focused-window peeking, except for windows
+        // Amethyst has since moved elsewhere.
+        for frameAssignment in frameAssignments where windowSet.window(for: frameAssignment).map(owns) ?? false {
+            windowSet.perform(frameAssignment: frameAssignment)
+        }
 
         // Only now hand the picture back to the real windows.
         if let animator = snapshotAnimator {
@@ -600,6 +616,7 @@ final class AnimatedReflowOperation<Window: WindowType>: Operation, @unchecked S
         let glideStart = now()
         var pendingSteer = refinesInPlace ? Set(participants.indices) : resizedIndexSet
         var pendingRecapture: [Int: TimeInterval] = [:]
+        var retiredProxies = Set<Int>()
         var refinements: [DispatchGroup] = []
         var remainingWaits = Int(((duration + 1.0) / frameInterval).rounded(.up))
 
@@ -609,6 +626,13 @@ final class AnimatedReflowOperation<Window: WindowType>: Operation, @unchecked S
             remainingWaits -= 1
             if isCancelled || remainingWaits <= 0 {
                 return false
+            }
+
+            // A window thrown to another screen or Space mid-glide is no longer ours: stop refining it and hide its proxy.
+            let retired = retireHandedOffProxies(participants, alreadyRetired: &retiredProxies, animator: animator)
+            pendingSteer.subtract(retired)
+            for index in retired {
+                pendingRecapture[index] = nil
             }
 
             let current = now()
@@ -983,11 +1007,43 @@ final class AnimatedReflowOperation<Window: WindowType>: Operation, @unchecked S
         waitForWriters()
     }
 
+    // MARK: - Ownership
+
+    /**
+     Whether this operation may still move the window.
+
+     A window Amethyst has since relocated to another screen or Space, or that another screen's animation has claimed, was handed off: writing its old tile back would undo the move. Operations without a screen have no claims and own everything.
+     */
+    private func owns(_ window: Window) -> Bool {
+        guard let screenID = screenID else {
+            return true
+        }
+        return AnimatingWindows.shared.screenID(for: window.cgID()) == screenID
+    }
+
+    /// Finds participants handed off since the last check and hides their proxies so they do not glide on as ghosts.
+    private func retireHandedOffProxies(_ participants: [Participant], alreadyRetired: inout Set<Int>, animator: SnapshotAnimating) -> Set<Int> {
+        let retired = Set(participants.indices.filter { !alreadyRetired.contains($0) && !owns(participants[$0].window) })
+        guard !retired.isEmpty else {
+            return []
+        }
+        alreadyRetired.formUnion(retired)
+        runOnMainSync {
+            animator.hide(indices: retired.sorted())
+        }
+        return retired
+    }
+
     // MARK: - Writers
 
+    /// Issues the writes, leaving out windows this operation no longer owns.
     private func dispatch(_ writes: Writes) {
         for (pid, applicationWrites) in writes {
-            writer(for: pid).write(applicationWrites)
+            let owned = applicationWrites.filter { owns($0.value.window) }
+            guard !owned.isEmpty else {
+                continue
+            }
+            writer(for: pid).write(owned)
         }
     }
 
