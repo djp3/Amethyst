@@ -284,6 +284,16 @@ class AnimatedReflowOperationTests: QuickSpec {
                 return .init(window: window, frame: CGRect(x: xPosition, y: 0, width: 100, height: 100), includingSize: false)
             }
 
+            /// A writer whose every frame signals `started` and then waits for `release` before it is applied, so a test can
+            /// queue frames behind one in flight without guessing how soon the writer's thread picks it up.
+            func makeGatedWriter(group: DispatchGroup, started: DispatchSemaphore, release: DispatchSemaphore) -> ApplicationFrameWriter<TestWindow> {
+                return ApplicationFrameWriter<TestWindow>(pid: 1, group: group, inline: false, now: { ProcessInfo.processInfo.systemUptime }, beginWrite: { _ in
+                    started.signal()
+                    release.wait()
+                    return true
+                })
+            }
+
             it("drops a queued frame once its window may no longer be touched") {
                 let window = TestWindow(element: nil)!
                 let group = DispatchGroup()
@@ -349,15 +359,19 @@ class AnimatedReflowOperationTests: QuickSpec {
 
             it("keeps a queued resize when a later move replaces it") {
                 let window = TestWindow(element: nil)!
-                window.animationFrameDelay = 0.03
                 let group = DispatchGroup()
-                let writer = ApplicationFrameWriter<TestWindow>(pid: 1, group: group, inline: false, now: { ProcessInfo.processInfo.systemUptime })
+                let started = DispatchSemaphore(value: 0)
+                let release = DispatchSemaphore(value: 0)
+                let writer = makeGatedWriter(group: group, started: started, release: release)
 
                 // A move is in flight; a resize queues behind it; then another move for the same window arrives.
                 writer.write([0: makeWrite(window, xPosition: 1)])
-                Thread.sleep(forTimeInterval: 0.005)
+                expect(started.wait(timeout: .now() + 2)) == .success
                 writer.write([0: .init(window: window, frame: CGRect(x: 2, y: 0, width: 300, height: 200), includingSize: true)])
                 writer.write([0: .init(window: window, frame: CGRect(x: 3, y: 0, width: 300, height: 200), includingSize: false)])
+                // Let the move through, then the frame merged behind it.
+                release.signal()
+                release.signal()
 
                 expect(group.wait(timeout: .now() + 2)) == .success
                 expect(window.frame()) == CGRect(x: 3, y: 0, width: 300, height: 200)
@@ -365,17 +379,19 @@ class AnimatedReflowOperationTests: QuickSpec {
 
             it("forgets discarded frames") {
                 let window = TestWindow(element: nil)!
-                window.animationFrameDelay = 0.03
                 let group = DispatchGroup()
-                let writer = ApplicationFrameWriter<TestWindow>(pid: 1, group: group, inline: false, now: { ProcessInfo.processInfo.systemUptime })
+                let started = DispatchSemaphore(value: 0)
+                let release = DispatchSemaphore(value: 0)
+                let writer = makeGatedWriter(group: group, started: started, release: release)
 
                 writer.write([0: makeWrite(window, xPosition: 1)])
-                Thread.sleep(forTimeInterval: 0.005)
+                expect(started.wait(timeout: .now() + 2)) == .success
                 writer.write([0: makeWrite(window, xPosition: 2)])
                 writer.discardPending()
+                release.signal()
 
                 expect(group.wait(timeout: .now() + 2)) == .success
-                expect(window.frame().minX) == 1
+                expect(window.frameHistory.map { $0.minX }) == [1]
             }
         }
 
