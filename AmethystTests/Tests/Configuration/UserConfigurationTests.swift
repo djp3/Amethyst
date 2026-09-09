@@ -83,6 +83,19 @@ class UserConfigurationTests: QuickSpec {
                 expect(configuration.animatesWindowMovement()).to(beFalse())
             }
 
+            it("animates only when the setting is on and the system does not ask for reduced motion") {
+                let configuration = UserConfiguration(storage: TestConfigurationStorage())
+                configuration.systemReducesMotion = { false }
+                expect(configuration.shouldAnimateWindowMovement()).to(beFalse())
+
+                configuration.toggleAnimateWindows()
+                expect(configuration.shouldAnimateWindowMovement()).to(beTrue())
+
+                configuration.systemReducesMotion = { true }
+                expect(configuration.animatesWindowMovement()).to(beTrue())
+                expect(configuration.shouldAnimateWindowMovement()).to(beFalse())
+            }
+
             it("falls back to the default duration when unset") {
                 let configuration = UserConfiguration(storage: TestConfigurationStorage())
                 expect(configuration.windowAnimationDuration()).to(beCloseTo(UserConfiguration.defaultWindowAnimationDuration))

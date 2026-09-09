@@ -91,7 +91,7 @@ final class ScreenManager<Delegate: ScreenManagerDelegate>: NSObject, Codable {
         reflowOperationQueue.underlyingQueue = reflowOperationDispatchQueue
 
         // Warm the window list the snapshot animation's backdrop needs so the first reflow does not have to wait for it.
-        if #available(macOS 14.0, *), userConfiguration.animatesWindowMovement(), ScreenCapturePermission.isGranted {
+        if #available(macOS 14.0, *), userConfiguration.shouldAnimateWindowMovement(), ScreenCapturePermission.isGranted {
             BackdropCapturer.shared.refresh()
         }
     }
@@ -298,7 +298,7 @@ final class ScreenManager<Delegate: ScreenManagerDelegate>: NSObject, Codable {
 
         // Either animate every assignment together in one operation or apply them individually as before
         let operations: [Operation]
-        if userConfiguration.animatesWindowMovement() && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+        if userConfiguration.shouldAnimateWindowMovement() {
             // Smooth snapshot animation needs the private capture call and the Screen Recording permission; otherwise the real windows are moved.
             let canSnapshot = SkyLight.isAvailable && ScreenCapturePermission.isGranted
             if !canSnapshot && SkyLight.isAvailable && ScreenCapturePermission.requestOnce() {

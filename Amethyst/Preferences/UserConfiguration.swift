@@ -772,8 +772,17 @@ class UserConfiguration: NSObject {
     static let minimumWindowAnimationDuration: TimeInterval = 0.05
     static let maximumWindowAnimationDuration: TimeInterval = 1.0
 
+    /// Whether the system asks for reduced motion. Replaceable so the animation rule can be tested without touching system settings.
+    var systemReducesMotion: () -> Bool = { NSWorkspace.shared.accessibilityDisplayShouldReduceMotion }
+
+    /// The stored setting: whether the user asked for animated reflows. This is what the toggle flips and the HUD reports.
     func animatesWindowMovement() -> Bool {
         return storage.bool(forKey: .animateWindows)
+    }
+
+    /// Whether a reflow should animate now: the setting is on and the system does not ask for reduced motion.
+    func shouldAnimateWindowMovement() -> Bool {
+        return animatesWindowMovement() && !systemReducesMotion()
     }
 
     /// Duration of an animated reflow in seconds, clamped to a sane range. An unset value falls back to the default rather than the minimum.
