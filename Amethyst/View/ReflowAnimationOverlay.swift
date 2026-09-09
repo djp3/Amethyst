@@ -34,7 +34,7 @@ protocol SnapshotAnimating: AnyObject {
     /**
      Steers proxies that are already moving to new frames, from wherever they currently are, over `duration`.
 
-     `frames` is indexed like the proxies given to `show`; `nil` leaves a proxy alone. A non-nil `completion` replaces the pending one, otherwise the completion given to `animate` still fires when the last motion ends.
+     `frames` is indexed like the proxies given to `show`; `nil` leaves a proxy alone. A non-nil `completion` replaces the pending one, which is called first; otherwise the completion given to `animate` still fires when the last motion ends.
      */
     func retarget(frames: [CGRect?], duration: TimeInterval, completion: (() -> Void)?)
 
@@ -164,6 +164,7 @@ final class ReflowAnimationOverlay: SnapshotAnimating {
             return
         }
 
+        fireCompletion()
         self.completion = completion
         let frames = proxies.map { Optional($0.target) }
         glide(layerIndices: Array(layers.indices), to: frames, duration: duration, timing: CAMediaTimingFunction(name: .easeInEaseOut), panel: panel)
@@ -171,6 +172,7 @@ final class ReflowAnimationOverlay: SnapshotAnimating {
 
     func retarget(frames: [CGRect?], duration: TimeInterval, completion: (() -> Void)?) {
         if let completion = completion {
+            fireCompletion()
             self.completion = completion
         }
 
@@ -338,11 +340,12 @@ final class ReflowAnimationOverlay: SnapshotAnimating {
     }
 
     func cancel() {
-        completion = nil
         layers.forEach { $0.removeAllAnimations() }
         tearDown()
     }
 
+    /// Takes the panel down. Every completion the overlay accepted is called exactly once, so whoever is waiting on one is
+    /// released here rather than left waiting, or worse, holding a counter that is destroyed while still raised.
     private func tearDown() {
         panel?.orderOut(nil)
         panel?.close()
@@ -350,6 +353,7 @@ final class ReflowAnimationOverlay: SnapshotAnimating {
         backdropLayer = nil
         layers = []
         proxies = []
+        fireCompletion()
     }
 
     private func layerFrame(for flipped: CGRect, panelFrame: CGRect) -> CGRect {

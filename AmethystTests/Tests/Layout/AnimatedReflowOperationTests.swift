@@ -52,6 +52,9 @@ class AnimatedReflowOperationTests: QuickSpec {
         var hiddenIndices: [Int] = []
         var crossfadeImages: [[CGImage?]] = []
         var crossfadeDurations: [TimeInterval] = []
+        /// Keeps late-correction completions instead of calling them, like an overlay whose animations never report back.
+        var swallowsCorrectionCompletions = false
+        private var swallowedCompletions: [() -> Void] = []
         private var pendingCompletion: (() -> Void)?
 
         func show(proxies: [SnapshotProxy], screenFrame: CGRect, backdrop: CGImage?) {
@@ -89,7 +92,11 @@ class AnimatedReflowOperationTests: QuickSpec {
             retargetedFrames.append(frames)
             retargetDurations.append(duration)
             if let completion = completion {
-                completion()
+                if swallowsCorrectionCompletions {
+                    swallowedCompletions.append(completion)
+                } else {
+                    completion()
+                }
             } else {
                 endPendingGlide()
             }
@@ -382,6 +389,51 @@ class AnimatedReflowOperationTests: QuickSpec {
         }
 
         describe("overlay panel") {
+            it("calls a pending completion when it is replaced or the overlay is cancelled") {
+                let image = AnimatedReflowOperationTests.makeImage(width: 10, height: 10)
+                let proxy = SnapshotProxy(image: image, start: CGRect(x: 10, y: 60, width: 40, height: 40), target: CGRect(x: 80, y: 60, width: 40, height: 40))
+                var glideCompletions = 0
+                var correctionCompletions = 0
+                let overlay: ReflowAnimationOverlay = self.onMain {
+                    let screenFrame = FlippedCoordinates.flippedRect(fromAppKit: NSScreen.screens[0].frame, primaryScreenHeight: FlippedCoordinates.primaryScreenHeight)
+                    let overlay = ReflowAnimationOverlay()
+                    overlay.show(proxies: [proxy], screenFrame: screenFrame, backdrop: nil)
+                    overlay.animate(duration: 5) { glideCompletions += 1 }
+                    return overlay
+                }
+
+                self.onMain { overlay.retarget(frames: [CGRect(x: 90, y: 60, width: 40, height: 40)], duration: 5) { correctionCompletions += 1 } }
+                expect(glideCompletions) == 1
+                expect(correctionCompletions) == 0
+
+                self.onMain { overlay.cancel() }
+                expect(correctionCompletions) == 1
+
+                // Late Core Animation callbacks for the removed animations must not call anything a second time.
+                self.letMainThreadRun(attempts: 6) { false }
+                expect(glideCompletions) == 1
+                expect(correctionCompletions) == 1
+            }
+
+            it("calls a pending completion when the overlay finishes") {
+                let image = AnimatedReflowOperationTests.makeImage(width: 10, height: 10)
+                let proxy = SnapshotProxy(image: image, start: CGRect(x: 10, y: 60, width: 40, height: 40), target: CGRect(x: 80, y: 60, width: 40, height: 40))
+                var glideCompletions = 0
+                var finishCompletions = 0
+                let overlay: ReflowAnimationOverlay = self.onMain {
+                    let screenFrame = FlippedCoordinates.flippedRect(fromAppKit: NSScreen.screens[0].frame, primaryScreenHeight: FlippedCoordinates.primaryScreenHeight)
+                    let overlay = ReflowAnimationOverlay()
+                    overlay.show(proxies: [proxy], screenFrame: screenFrame, backdrop: nil)
+                    overlay.animate(duration: 5) { glideCompletions += 1 }
+                    return overlay
+                }
+
+                self.onMain { overlay.finish(fadeDuration: 0.02, lingering: [], lingerDuration: 0.02) { finishCompletions += 1 } }
+                self.letMainThreadRun(attempts: 40) { glideCompletions == 1 && finishCompletions == 1 }
+                expect(glideCompletions) == 1
+                expect(finishCompletions) == 1
+            }
+
             it("takes its panel down after the fade even when nothing else retains the overlay") {
                 let livePanels = { self.onMain { ReflowAnimationOverlay.livePanelCount } }
                 let image = AnimatedReflowOperationTests.makeImage(width: 10, height: 10)
@@ -779,6 +831,22 @@ class AnimatedReflowOperationTests: QuickSpec {
                 expect(animator.retargetedFrames.count) == 1
                 expect(animator.retargetedFrames[0][0]) == landed
                 expect(window.frame()) == landed
+            }
+
+            it("survives a late correction whose completion never arrives") {
+                let fixture = self.makeFixture(startFrames: startFrames, targetFrames: targetFrames)
+                fixture.windows[1].maximumSize = CGSize(width: 1200, height: 1000)
+                let clock = FakeClock()
+                let animator = FakeSnapshotAnimator()
+                animator.swallowsCorrectionCompletions = true
+                let operation = self.makeSnapshotOperation(fixture, clock: clock, animator: animator, capture: captureAll)
+
+                operation.main()
+
+                // The correction was requested and its completion never came, yet the operation finished. The counter it
+                // waited on is now held only by the swallowed completion and must survive being dropped with it.
+                expect(animator.retargetedFrames.count) == 1
+                expect(animator.finishCalled).to(beTrue())
             }
 
             it("steers a proxy to the size its application actually accepts") {

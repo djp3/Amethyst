@@ -660,7 +660,7 @@ final class AnimatedReflowOperation<Window: WindowType>: Operation, @unchecked S
         var pendingSteer = refinesInPlace ? Set(participants.indices) : resizedIndexSet
         var pendingRecapture: [Int: TimeInterval] = [:]
         var retiredProxies = Set<Int>()
-        var refinements: [DispatchGroup] = []
+        var refinements: [DispatchSemaphore] = []
         var remainingWaits = Int(((duration + 1.0) / frameInterval).rounded(.up))
 
         while finished.wait(timeout: .now()) == .timedOut {
@@ -703,8 +703,8 @@ final class AnimatedReflowOperation<Window: WindowType>: Operation, @unchecked S
             let due = pendingRecapture.filter { $0.value <= current }.map { $0.key }
             if !due.isEmpty {
                 let remaining = max(duration - elapsed, minimumDissolveDuration)
-                let (group, dissolved, unverifiable) = dissolveToFreshCaptures(animator, participants, indices: due.sorted(), duration: remaining, isFinalAttempt: false)
-                refinements.append(contentsOf: [group].compactMap { $0 })
+                let (dissolveDone, dissolved, unverifiable) = dissolveToFreshCaptures(animator, participants, indices: due.sorted(), duration: remaining, isFinalAttempt: false)
+                refinements.append(contentsOf: [dissolveDone].compactMap { $0 })
                 timings.recaptured += dissolved.count
                 timings.unrefreshed = Array(Set(timings.unrefreshed).union(unverifiable)).sorted()
                 for index in due {
@@ -728,8 +728,8 @@ final class AnimatedReflowOperation<Window: WindowType>: Operation, @unchecked S
         pendingSteer: Set<Int>,
         pendingRecapture: Set<Int>,
         timings: inout SnapshotTimings
-    ) -> [DispatchGroup] {
-        var refinements: [DispatchGroup] = []
+    ) -> [DispatchSemaphore] {
+        var refinements: [DispatchSemaphore] = []
         var recapture = pendingRecapture
 
         if !pendingSteer.isEmpty {
@@ -739,14 +739,15 @@ final class AnimatedReflowOperation<Window: WindowType>: Operation, @unchecked S
             // to placement and the settle.
             let steerable = pendingSteer.filter { writer(for: participants[$0].pid).isIdle }
             if !steerable.isEmpty {
-                let group = DispatchGroup()
-                group.enter()
-                let corrected = steerToAcceptedFrames(animator, &participants, indices: steerable.sorted(), duration: lateCorrectionDuration) { group.leave() }
+                // A semaphore rather than a group: the wait below is bounded, and a semaphore that was never signalled can be
+                // dropped afterwards, whereas a group destroyed while still entered aborts the process.
+                let correctionDone = DispatchSemaphore(value: 0)
+                let corrected = steerToAcceptedFrames(animator, &participants, indices: steerable.sorted(), duration: lateCorrectionDuration) { correctionDone.signal() }
                 timings.corrected += corrected
                 if corrected == 0 {
-                    group.leave()
+                    correctionDone.signal()
                 }
-                refinements.append(group)
+                refinements.append(correctionDone)
                 recapture.formUnion(steerable.filter { refinesInPlace && resizedIndexSet.contains($0) })
             }
         }
@@ -757,8 +758,8 @@ final class AnimatedReflowOperation<Window: WindowType>: Operation, @unchecked S
 
         // Slow renderers get one more moment before the final attempt; whatever still has not redrawn lingers at the handoff.
         sleep(redrawSettleDelay)
-        let (group, dissolved, _) = dissolveToFreshCaptures(animator, participants, indices: recapture.sorted(), duration: minimumDissolveDuration, isFinalAttempt: true)
-        refinements.append(contentsOf: [group].compactMap { $0 })
+        let (dissolveDone, dissolved, _) = dissolveToFreshCaptures(animator, participants, indices: recapture.sorted(), duration: minimumDissolveDuration, isFinalAttempt: true)
+        refinements.append(contentsOf: [dissolveDone].compactMap { $0 })
         timings.recaptured += dissolved.count
         timings.unrefreshed = Array(Set(timings.unrefreshed).union(recapture.subtracting(dissolved))).sorted()
         return refinements
@@ -872,8 +873,8 @@ final class AnimatedReflowOperation<Window: WindowType>: Operation, @unchecked S
      Only an image whose pixel size matches the size the application accepted is used; a window whose application has not
      finished redrawing keeps its old image and is reported back so the caller can try again.
 
-     - Returns: A group that empties when the dissolve has finished, or `nil` if nothing was dissolved; the indices that received a
-       fresh image; and the indices whose captures cannot be verified and so are never dissolved mid-glide.
+     - Returns: A semaphore signalled when the dissolve has finished, or `nil` if nothing was dissolved; the indices that received
+       a fresh image; and the indices whose captures cannot be verified and so are never dissolved mid-glide.
      */
     private func dissolveToFreshCaptures(
         _ animator: SnapshotAnimating,
@@ -881,7 +882,7 @@ final class AnimatedReflowOperation<Window: WindowType>: Operation, @unchecked S
         indices: [Int],
         duration: TimeInterval,
         isFinalAttempt: Bool
-    ) -> (DispatchGroup?, Set<Int>, Set<Int>) {
+    ) -> (DispatchSemaphore?, Set<Int>, Set<Int>) {
         // A capture that cannot reveal a stale surface could dissolve the proxy into old content; such windows blend into the
         // real window at the handoff instead.
         let allRequests = indices.map { WindowCaptureRequest(windowID: participants[$0].window.cgID(), frame: participants[$0].target) }
@@ -929,14 +930,13 @@ final class AnimatedReflowOperation<Window: WindowType>: Operation, @unchecked S
             return (nil, [], unverifiable)
         }
 
-        let group = DispatchGroup()
-        group.enter()
+        let dissolveDone = DispatchSemaphore(value: 0)
         runOnMainSync {
             animator.crossfade(images: images, duration: duration) {
-                group.leave()
+                dissolveDone.signal()
             }
         }
-        return (group, dissolved, unverifiable)
+        return (dissolveDone, dissolved, unverifiable)
     }
 
     /**
