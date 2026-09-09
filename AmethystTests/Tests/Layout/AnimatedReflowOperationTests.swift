@@ -114,6 +114,24 @@ class AnimatedReflowOperationTests: QuickSpec {
         }
     }
 
+    /// Runs `work` on the main thread and returns its result; the overlay's panel and animations live there.
+    private func onMain<Value>(_ work: () -> Value) -> Value {
+        var value: Value?
+        runOnMainSync { value = work() }
+        return value!
+    }
+
+    /// Gives the main thread time to deliver its queued work and animation completions, without occupying it, until `done` holds or `attempts` run out.
+    private func letMainThreadRun(attempts: Int, until done: () -> Bool) {
+        for _ in 0..<attempts where !done() {
+            if Thread.isMainThread {
+                RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.05))
+            } else {
+                Thread.sleep(forTimeInterval: 0.05)
+            }
+        }
+    }
+
     private static func makeImage(width: Int = 1, height: Int = 1) -> CGImage {
         let context = CGContext(
             data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
@@ -335,20 +353,11 @@ class AnimatedReflowOperationTests: QuickSpec {
 
         describe("overlay panel") {
             it("takes its panel down after the fade even when nothing else retains the overlay") {
-                // AppKit windows live on the main thread, and the fade completes on the main run loop.
-                func onMain<Value>(_ work: () -> Value) -> Value {
-                    var value: Value?
-                    runOnMainSync { value = work() }
-                    return value!
-                }
-                func livePanels() -> Int {
-                    return onMain { ReflowAnimationOverlay.livePanelCount }
-                }
-
+                let livePanels = { self.onMain { ReflowAnimationOverlay.livePanelCount } }
                 let image = AnimatedReflowOperationTests.makeImage(width: 10, height: 10)
                 let proxy = SnapshotProxy(image: image, start: CGRect(x: 10, y: 60, width: 40, height: 40), target: CGRect(x: 80, y: 60, width: 40, height: 40))
 
-                var overlay: ReflowAnimationOverlay? = onMain {
+                var overlay: ReflowAnimationOverlay? = self.onMain {
                     let screenFrame = FlippedCoordinates.flippedRect(fromAppKit: NSScreen.screens[0].frame, primaryScreenHeight: FlippedCoordinates.primaryScreenHeight)
                     let overlay = ReflowAnimationOverlay()
                     overlay.show(proxies: [proxy], screenFrame: screenFrame, backdrop: nil)
@@ -358,19 +367,15 @@ class AnimatedReflowOperationTests: QuickSpec {
 
                 // The reflow operation drops its reference as soon as it has asked for the fade.
                 weak var stillAlive = overlay
-                onMain { overlay?.finish(fadeDuration: 0.02, lingering: [], lingerDuration: 0.02) {} }
+                self.onMain { overlay?.finish(fadeDuration: 0.02, lingering: [], lingerDuration: 0.02) {} }
                 overlay = nil
 
                 // The pending fade must keep the overlay alive by itself; with a weak reference it would be gone already.
                 expect(stillAlive).toNot(beNil())
 
-                // Then the fade, or its fallback timer, takes the panel down on the main run loop, and once the fallback
-                // has fired nothing holds the overlay any more.
-                var attempts = 0
-                while (livePanels() > 0 || stillAlive != nil) && attempts < 100 {
-                    onMain { RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.05)) }
-                    attempts += 1
-                }
+                // Then the fade, or its fallback timer, takes the panel down, and once the fallback has fired nothing holds
+                // the overlay any more. The main thread must be left free to deliver both.
+                self.letMainThreadRun(attempts: 100) { livePanels() == 0 && stillAlive == nil }
                 expect(livePanels()) == 0
                 expect(stillAlive).to(beNil())
             }
@@ -637,6 +642,30 @@ class AnimatedReflowOperationTests: QuickSpec {
                 expect(animator.crossfadeImages.count) == 1
                 expect(animator.crossfadeImages[0][0]?.width) == 1100
                 expect(animator.lingering).to(beEmpty())
+            }
+
+            it("keeps the focused window's proxy on screen in place when the application keeps a larger size") {
+                // A focused window with a 1100-point minimum width assigned a 500-point tile at the right edge of a 2000-point screen.
+                let fixture = self.makeFixture(startFrames: [CGRect(x: 0, y: 0, width: 1100, height: 1000)], targetFrames: [CGRect(x: 1500, y: 0, width: 500, height: 1000)], focusedIndex: 0)
+                let window = fixture.windows[0]
+                window.minimumSize = CGSize(width: 1100, height: 1000)
+                let clock = FakeClock()
+                let animator = FakeSnapshotAnimator()
+                animator.completesImmediately = false
+                let captureWhole: ([WindowCaptureRequest]) -> [CGImage]? = { requests in
+                    requests.map { _ in AnimatedReflowOperationTests.makeImage(width: Int(window.frame().width), height: Int(window.frame().height)) }
+                }
+                let operation = self.makeSnapshotOperation(fixture, clock: clock, animator: animator, capture: captureWhole, backdrop: { _, _ in
+                    AnimatedReflowOperationTests.makeImage(width: 4, height: 4)
+                })
+
+                operation.main()
+
+                // The settle keeps the window on screen; the proxy must be steered to that same frame, not to the overhanging one.
+                let onScreen = CGRect(x: 900, y: 0, width: 1100, height: 1000)
+                expect(window.frame()) == onScreen
+                expect(animator.retargetedFrames.count) == 1
+                expect(animator.retargetedFrames[0][0]) == onScreen
             }
 
             it("steers a proxy to where its window actually lands when the application refuses a position") {
@@ -947,6 +976,21 @@ class AnimatedReflowOperationTests: QuickSpec {
                 for frame in fixture.windows[0].frameHistory.dropLast() {
                     expect(frame.maxX) <= 2000
                 }
+            }
+
+            it("keeps the focused window on screen with the size its application kept") {
+                // The tile fits the screen, but the app keeps the window 1100 wide, so the glide must clamp with that width.
+                let fixture = self.makeFixture(startFrames: [CGRect(x: 0, y: 0, width: 1100, height: 1000)], targetFrames: [CGRect(x: 1500, y: 0, width: 500, height: 1000)], focusedIndex: 0)
+                fixture.windows[0].minimumSize = CGSize(width: 1100, height: 1000)
+                let clock = FakeClock()
+                let operation = self.makeOperation(fixture, clock: clock)
+
+                operation.main()
+
+                for frame in fixture.windows[0].frameHistory {
+                    expect(frame.maxX) <= 2000
+                }
+                expect(fixture.windows[0].frame()) == CGRect(x: 900, y: 0, width: 1100, height: 1000)
             }
 
             it("finishes immediately with no assignments") {

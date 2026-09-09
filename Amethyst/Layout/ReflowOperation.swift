@@ -226,6 +226,24 @@ struct FrameAssignment<Window: WindowType> {
         return resizeRules.isMain ? implied : 1 - implied
     }
 
+    /**
+     The frame shifted, if this is the focused window, so that it lies within the screen.
+
+     Applications may keep a larger size than assigned; the focused window must remain fully on screen regardless, so its origin
+     is moved to fit. This is the one rule every path that positions the focused window shares: the settle pass, the animated
+     glide, and the corrections that follow an application's actual size.
+     */
+    func keepingFocusedWindowOnScreen(_ frame: CGRect) -> CGRect {
+        guard window.isFocused else {
+            return frame
+        }
+
+        var kept = frame
+        kept.origin.x = max(screenFrame.minX, min(frame.origin.x, screenFrame.maxX - frame.width))
+        kept.origin.y = max(screenFrame.minY, min(frame.origin.y, screenFrame.maxY - frame.height))
+        return kept
+    }
+
     /// Perform the actual application of the frame to the window
     func perform(withWindow window: Window) {
         var finalFrame = self.finalFrame
@@ -246,8 +264,7 @@ struct FrameAssignment<Window: WindowType> {
                 width: max(window.frame().width, finalFrame.width),
                 height: max(window.frame().height, finalFrame.height)
             )
-            finalOrigin.x = max(screenFrame.minX, min(finalOrigin.x, screenFrame.maxX - finalFrame.size.width))
-            finalOrigin.y = max(screenFrame.minY, min(finalOrigin.y, screenFrame.maxY - finalFrame.size.height))
+            finalOrigin = keepingFocusedWindowOnScreen(CGRect(origin: finalOrigin, size: finalFrame.size)).origin
         }
 
         // Move the window to its final frame

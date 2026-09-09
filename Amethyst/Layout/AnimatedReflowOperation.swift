@@ -293,19 +293,10 @@ final class AnimatedReflowOperation<Window: WindowType>: Operation, @unchecked S
         /// Pixels per point of the window's first capture, for validating later captures.
         var pixelsPerPoint: CGFloat = 1
 
-        /// The frame this window should show at `progress` of the accessibility glide: interpolated position, already-final size.
+        /// The frame this window should show at `progress` of the accessibility glide: interpolated position, already-final size, kept on screen if focused.
         func frame(at progress: CGFloat) -> CGRect {
             let interpolated = FrameInterpolation.interpolate(from: start, to: target, progress: progress)
-            var frame = CGRect(origin: interpolated.origin, size: lastIssued.size)
-
-            // Keep the focused window on screen throughout, mirroring the clamp that `perform(withWindow:)` applies at the end.
-            if assignment.window.isFocused {
-                let screenFrame = assignment.screenFrame
-                frame.origin.x = max(screenFrame.minX, min(frame.origin.x, screenFrame.maxX - frame.width))
-                frame.origin.y = max(screenFrame.minY, min(frame.origin.y, screenFrame.maxY - frame.height))
-            }
-
-            return frame
+            return assignment.keepingFocusedWindowOnScreen(CGRect(origin: interpolated.origin, size: lastIssued.size))
         }
     }
 
@@ -836,17 +827,11 @@ final class AnimatedReflowOperation<Window: WindowType>: Operation, @unchecked S
                 continue
             }
 
-            var corrected: CGRect
-            if refinesInPlace {
-                corrected = accepted
-            } else {
-                corrected = CGRect(origin: participants[index].target.origin, size: accepted.size)
-                if participants[index].assignment.window.isFocused {
-                    let screenFrame = participants[index].assignment.screenFrame
-                    corrected.origin.x = max(screenFrame.minX, min(corrected.origin.x, screenFrame.maxX - corrected.width))
-                    corrected.origin.y = max(screenFrame.minY, min(corrected.origin.y, screenFrame.maxY - corrected.height))
-                }
-            }
+            // Where the settle pass will leave the window: its accepted frame, kept on screen if it is the focused window.
+            let assignment = participants[index].assignment
+            let corrected = assignment.keepingFocusedWindowOnScreen(
+                refinesInPlace ? accepted : CGRect(origin: participants[index].target.origin, size: accepted.size)
+            )
 
             guard corrected != participants[index].target else {
                 continue
@@ -996,6 +981,15 @@ final class AnimatedReflowOperation<Window: WindowType>: Operation, @unchecked S
         dispatch(writes)
         waitForWriters()
         writers.values.forEach { $0.resetStatistics() }
+
+        // Applications may keep a different size than assigned; the glide must clamp and land with the size they kept.
+        for index in participants.indices where participants[index].resizable {
+            guard let accepted = FrameInterpolation.readable(participants[index].window.frame()) else {
+                continue
+            }
+            participants[index].lastIssued.size = accepted.size
+            participants[index].target.size = accepted.size
+        }
     }
 
     /// Phase two: drive the positions. Returns `false` if the operation was cancelled before the glide finished.
