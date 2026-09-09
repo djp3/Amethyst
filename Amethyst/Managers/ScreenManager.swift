@@ -301,8 +301,12 @@ final class ScreenManager<Delegate: ScreenManagerDelegate>: NSObject, Codable {
         if userConfiguration.shouldAnimateWindowMovement() {
             // Smooth snapshot animation needs the private capture call and the Screen Recording permission; otherwise the real windows are moved.
             let canSnapshot = SkyLight.isAvailable && ScreenCapturePermission.isGranted
-            if !canSnapshot && SkyLight.isAvailable && ScreenCapturePermission.requestOnce() {
-                displayCustomHUD(title: "Allow Screen Recording for smooth window animation")
+            if !canSnapshot && SkyLight.isAvailable {
+                // Asking macOS is harmless every launch; the hint is shown once, for long enough to read.
+                ScreenCapturePermission.requestOnce()
+                if ScreenCapturePermission.takeHintOpportunity() {
+                    displayCustomHUD(title: "Allow Screen Recording for smooth window animation", duration: ScreenCapturePermission.hintDuration)
+                }
             }
 
             // Windows lying within this display are captured through SkyLight; ones overhanging its edge go through ScreenCaptureKit, which returns them whole.
@@ -443,7 +447,7 @@ final class ScreenManager<Delegate: ScreenManagerDelegate>: NSObject, Codable {
         layoutNameWindowController.close()
     }
 
-    func displayCustomHUD(title: String, description: String = "") {
+    func displayCustomHUD(title: String, description: String = "", duration: TimeInterval = 0.6) {
         guard let screen = screen else {
             return
         }
@@ -454,7 +458,7 @@ final class ScreenManager<Delegate: ScreenManagerDelegate>: NSObject, Codable {
 
         defer {
             NSObject.cancelPreviousPerformRequests(withTarget: self, selector: #selector(hideLayoutHUD(_:)), object: nil)
-            perform(#selector(hideLayoutHUD(_:)), with: nil, afterDelay: 0.6)
+            perform(#selector(hideLayoutHUD(_:)), with: nil, afterDelay: duration)
         }
 
         guard let layoutNameWindow = layoutNameWindowController.window as? LayoutNameWindow else {

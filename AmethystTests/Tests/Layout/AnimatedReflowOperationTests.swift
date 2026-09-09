@@ -421,6 +421,20 @@ class AnimatedReflowOperationTests: QuickSpec {
             }
         }
 
+        describe("screen capture permission hint") {
+            it("is offered once per preferences store") {
+                let suiteName = "AmethystTests.\(UUID().uuidString)"
+                let defaults = UserDefaults(suiteName: suiteName)!
+                defer { defaults.removePersistentDomain(forName: suiteName) }
+
+                expect(ScreenCapturePermission.takeHintOpportunity(defaults: defaults)).to(beTrue())
+                expect(ScreenCapturePermission.takeHintOpportunity(defaults: defaults)).to(beFalse())
+
+                defaults.removeObject(forKey: ScreenCapturePermission.hintShownKey)
+                expect(ScreenCapturePermission.takeHintOpportunity(defaults: defaults)).to(beTrue())
+            }
+        }
+
         describe("overlay panel") {
             it("calls a pending completion when it is replaced or the overlay is cancelled") {
                 let image = AnimatedReflowOperationTests.makeImage(width: 10, height: 10)

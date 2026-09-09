@@ -226,4 +226,20 @@ enum ScreenCapturePermission {
         CGRequestScreenCaptureAccess()
         return true
     }
+
+    /// Remembers that Amethyst's own hint about the permission has been shown, since it must not become a nag: macOS prompts only once ever, so a denial would otherwise bring the hint back on every launch.
+    static let hintShownKey = "screen-recording-hint-shown"
+
+    /// How long the hint stays up, long enough to read a sentence.
+    static let hintDuration: TimeInterval = 4
+
+    /// Whether the hint should be shown now, recording that it was. `true` once per `defaults` store.
+    static func takeHintOpportunity(defaults: UserDefaults = .standard) -> Bool {
+        guard !defaults.bool(forKey: hintShownKey) else {
+            return false
+        }
+
+        defaults.set(true, forKey: hintShownKey)
+        return true
+    }
 }
