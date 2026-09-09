@@ -310,6 +310,42 @@ class AnimatedReflowOperationTests: QuickSpec {
             }
         }
 
+        describe("overlay panel") {
+            it("takes its panel down after the fade even when nothing else retains the overlay") {
+                // AppKit windows live on the main thread, and the fade completes on the main run loop.
+                func onMain<Value>(_ work: () -> Value) -> Value {
+                    var value: Value?
+                    runOnMainSync { value = work() }
+                    return value!
+                }
+                func livePanels() -> Int {
+                    return onMain { ReflowAnimationOverlay.livePanelCount }
+                }
+
+                let image = AnimatedReflowOperationTests.makeImage(width: 10, height: 10)
+                let proxy = SnapshotProxy(image: image, start: CGRect(x: 10, y: 60, width: 40, height: 40), target: CGRect(x: 80, y: 60, width: 40, height: 40))
+
+                var overlay: ReflowAnimationOverlay? = onMain {
+                    let screenFrame = FlippedCoordinates.flippedRect(fromAppKit: NSScreen.screens[0].frame, primaryScreenHeight: FlippedCoordinates.primaryScreenHeight)
+                    let overlay = ReflowAnimationOverlay()
+                    overlay.show(proxies: [proxy], screenFrame: screenFrame, backdrop: nil)
+                    return overlay
+                }
+                expect(livePanels()) == 1
+
+                // The reflow operation drops its reference as soon as it has asked for the fade.
+                onMain { overlay?.finish(fadeDuration: 0.02, lingering: [], lingerDuration: 0.02) {} }
+                overlay = nil
+
+                var attempts = 0
+                while livePanels() > 0 && attempts < 40 {
+                    onMain { RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.05)) }
+                    attempts += 1
+                }
+                expect(livePanels()) == 0
+            }
+        }
+
         describe("animating windows registry") {
             it("keeps a window with the screen animating it until that screen releases it") {
                 let registry = AnimatingWindows()

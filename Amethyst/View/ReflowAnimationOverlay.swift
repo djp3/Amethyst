@@ -74,6 +74,14 @@ enum FlippedCoordinates {
  The panel is never managed by Amethyst because Amethyst's own process is not a regular application, and `sharingType = .none` keeps it out of any later capture.
  */
 final class ReflowAnimationOverlay: SnapshotAnimating {
+    /// Marks the overlay's panel so stray ones can be found, for example by tests.
+    static let panelIdentifier = NSUserInterfaceItemIdentifier("AmethystReflowAnimationOverlay")
+
+    /// How many overlay panels the application currently has on screen.
+    static var livePanelCount: Int {
+        return NSApplication.shared.windows.filter { $0.identifier == panelIdentifier }.count
+    }
+
     private var panel: NSPanel?
     private var backdropLayer: CALayer?
     private var layers: [CALayer] = []
@@ -103,6 +111,7 @@ final class ReflowAnimationOverlay: SnapshotAnimating {
         panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle, .fullScreenAuxiliary]
         panel.sharingType = .none
         panel.animationBehavior = .none
+        panel.identifier = ReflowAnimationOverlay.panelIdentifier
 
         let contentView = NSView(frame: NSRect(origin: .zero, size: panelFrame.size))
         contentView.wantsLayer = true
@@ -284,8 +293,10 @@ final class ReflowAnimationOverlay: SnapshotAnimating {
         }
 
         CATransaction.begin()
-        CATransaction.setCompletionBlock { [weak self] in
-            self?.tearDown()
+        // Nothing else holds the overlay once the reflow operation returns, so the completion must keep it alive itself
+        // until the panel has been taken down; a weak reference here would leave the panel on screen forever.
+        CATransaction.setCompletionBlock {
+            self.tearDown()
             completion()
         }
 
