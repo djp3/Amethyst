@@ -10,6 +10,7 @@
 import CoreGraphics
 import Nimble
 import Quick
+import XCTest
 import Silica
 
 class AnimatedReflowOperationTests: QuickSpec {
@@ -141,6 +142,14 @@ class AnimatedReflowOperationTests: QuickSpec {
                 Thread.sleep(forTimeInterval: 0.05)
             }
         }
+    }
+
+    /// The primary screen's frame in the flipped coordinates the overlay takes, or a skip: the overlay needs a display to put its panel on.
+    private func primaryScreenFrameOrSkip() throws -> CGRect {
+        guard let screen = NSScreen.screens.first else {
+            throw XCTSkip("needs an attached display")
+        }
+        return FlippedCoordinates.flippedRect(fromAppKit: screen.frame, primaryScreenHeight: FlippedCoordinates.primaryScreenHeight)
     }
 
     private static func makeImage(width: Int = 1, height: Int = 1) -> CGImage {
@@ -413,12 +422,12 @@ class AnimatedReflowOperationTests: QuickSpec {
             }
 
             it("finds an attached screen by its identifier") {
+                expect(AMScreen.screen(withID: "not-a-screen")).to(beNil())
+
                 guard let screen = AMScreen.availableScreens.last, let screenID = screen.screenID() else {
-                    fail("no attached screen to test with")
-                    return
+                    throw XCTSkip("needs an attached display")
                 }
                 expect(AMScreen.screen(withID: screenID)?.screenID()) == screenID
-                expect(AMScreen.screen(withID: "not-a-screen")).to(beNil())
             }
 
             it("finds the display a screen frame lies on") {
@@ -460,8 +469,8 @@ class AnimatedReflowOperationTests: QuickSpec {
                 let proxy = SnapshotProxy(image: image, start: CGRect(x: 10, y: 60, width: 40, height: 40), target: CGRect(x: 80, y: 60, width: 40, height: 40))
                 var glideCompletions = 0
                 var correctionCompletions = 0
+                let screenFrame = try self.primaryScreenFrameOrSkip()
                 let overlay: ReflowAnimationOverlay = self.onMain {
-                    let screenFrame = FlippedCoordinates.flippedRect(fromAppKit: NSScreen.screens[0].frame, primaryScreenHeight: FlippedCoordinates.primaryScreenHeight)
                     let overlay = ReflowAnimationOverlay()
                     overlay.show(proxies: [proxy], screenFrame: screenFrame, backdrop: nil)
                     overlay.animate(duration: 5) { glideCompletions += 1 }
@@ -488,8 +497,8 @@ class AnimatedReflowOperationTests: QuickSpec {
                     SnapshotProxy(image: image, start: CGRect(x: 10, y: 160, width: 40, height: 40), target: CGRect(x: 80, y: 160, width: 40, height: 40))
                 ]
                 var glideCompletions = 0
+                let screenFrame = try self.primaryScreenFrameOrSkip()
                 let overlay: ReflowAnimationOverlay = self.onMain {
-                    let screenFrame = FlippedCoordinates.flippedRect(fromAppKit: NSScreen.screens[0].frame, primaryScreenHeight: FlippedCoordinates.primaryScreenHeight)
                     let overlay = ReflowAnimationOverlay()
                     overlay.show(proxies: proxies, screenFrame: screenFrame, backdrop: nil)
                     overlay.animate(duration: 5) { glideCompletions += 1 }
@@ -510,8 +519,8 @@ class AnimatedReflowOperationTests: QuickSpec {
             it("keeps its panel on the Space it was made on") {
                 let image = AnimatedReflowOperationTests.makeImage(width: 10, height: 10)
                 let proxy = SnapshotProxy(image: image, start: CGRect(x: 10, y: 60, width: 40, height: 40), target: CGRect(x: 80, y: 60, width: 40, height: 40))
+                let screenFrame = try self.primaryScreenFrameOrSkip()
                 let overlay: ReflowAnimationOverlay = self.onMain {
-                    let screenFrame = FlippedCoordinates.flippedRect(fromAppKit: NSScreen.screens[0].frame, primaryScreenHeight: FlippedCoordinates.primaryScreenHeight)
                     let overlay = ReflowAnimationOverlay()
                     overlay.show(proxies: [proxy], screenFrame: screenFrame, backdrop: nil)
                     return overlay
@@ -535,8 +544,8 @@ class AnimatedReflowOperationTests: QuickSpec {
                 let proxy = SnapshotProxy(image: image, start: CGRect(x: 10, y: 60, width: 40, height: 40), target: CGRect(x: 80, y: 60, width: 40, height: 40))
                 var glideCompletions = 0
                 var finishCompletions = 0
+                let screenFrame = try self.primaryScreenFrameOrSkip()
                 let overlay: ReflowAnimationOverlay = self.onMain {
-                    let screenFrame = FlippedCoordinates.flippedRect(fromAppKit: NSScreen.screens[0].frame, primaryScreenHeight: FlippedCoordinates.primaryScreenHeight)
                     let overlay = ReflowAnimationOverlay()
                     overlay.show(proxies: [proxy], screenFrame: screenFrame, backdrop: nil)
                     overlay.animate(duration: 5) { glideCompletions += 1 }
@@ -554,8 +563,8 @@ class AnimatedReflowOperationTests: QuickSpec {
                 let image = AnimatedReflowOperationTests.makeImage(width: 10, height: 10)
                 let proxy = SnapshotProxy(image: image, start: CGRect(x: 10, y: 60, width: 40, height: 40), target: CGRect(x: 80, y: 60, width: 40, height: 40))
 
+                let screenFrame = try self.primaryScreenFrameOrSkip()
                 var overlay: ReflowAnimationOverlay? = self.onMain {
-                    let screenFrame = FlippedCoordinates.flippedRect(fromAppKit: NSScreen.screens[0].frame, primaryScreenHeight: FlippedCoordinates.primaryScreenHeight)
                     let overlay = ReflowAnimationOverlay()
                     overlay.show(proxies: [proxy], screenFrame: screenFrame, backdrop: nil)
                     return overlay
