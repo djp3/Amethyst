@@ -34,6 +34,8 @@ final class TestWindow: WindowType {
     private var _frame: CGRect = .zero
     var isFocusedValue = false
     var isResizableValue = true
+    /// The application this window belongs to; windows of different applications get writers of their own.
+    var pidValue: pid_t = 1234
 
     /// Every frame applied through `setFrame` or `setAnimationFrame`, in order.
     private(set) var frameHistory: [CGRect] = []
@@ -126,7 +128,7 @@ final class TestWindow: WindowType {
     }
 
     func pid() -> pid_t {
-        return pid_t(1234)
+        return pidValue
     }
 
     func title() -> String? {

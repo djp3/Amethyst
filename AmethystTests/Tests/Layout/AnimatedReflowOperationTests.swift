@@ -639,6 +639,17 @@ class AnimatedReflowOperationTests: QuickSpec {
                 expect(registry.screenID(for: 2)).to(beNil())
             }
 
+            it("remembers a picture's last position for a second and hands it out once") {
+                let registry = AnimatingWindows()
+                let frame = CGRect(x: 10, y: 20, width: 300, height: 400)
+                registry.recordLastSeenFrames([1: frame], at: 0)
+                expect(registry.takeLastSeenFrame(for: 1, at: 1.5)).to(beNil())
+
+                registry.recordLastSeenFrames([1: frame], at: 0)
+                expect(registry.takeLastSeenFrame(for: 1, at: 0.5)) == frame
+                expect(registry.takeLastSeenFrame(for: 1, at: 0.5)).to(beNil())
+            }
+
             it("ignores a claim by a screen that is no longer attached") {
                 let registry = AnimatingWindows()
                 registry.claim([1], for: "external")
@@ -856,6 +867,88 @@ class AnimatedReflowOperationTests: QuickSpec {
                 expect(animator.crossfadeImages.count) == 1
                 expect(animator.crossfadeImages[0][1]?.width) == 1200
                 expect(constrained.frame()) == accepted
+            }
+
+            it("refines one application's windows without waiting for a slower application") {
+                let fixture = self.makeFixture(startFrames: startFrames, targetFrames: targetFrames)
+                let quick = fixture.windows[0]
+                quick.maximumSize = CGSize(width: 400, height: 1000)
+                let slow = fixture.windows[1]
+                // Window 1 belongs to another application, one that takes 0.4 s over every frame.
+                slow.pidValue = 5678
+                slow.animationFrameDelay = 0.4
+                let clock = FakeClock()
+                let animator = FakeSnapshotAnimator()
+                animator.completesImmediately = false
+                let captureCurrent: ([WindowCaptureRequest]) -> [CGImage]? = { requests in
+                    requests.map { request in
+                        let size = fixture.window(for: request).frame().size
+                        return AnimatedReflowOperationTests.makeImage(width: Int(size.width), height: Int(size.height))
+                    }
+                }
+                let operation = self.makeSnapshotOperation(fixture, clock: clock, animator: animator, capture: captureCurrent, backdrop: { _, _ in
+                    AnimatedReflowOperationTests.makeImage(width: 4, height: 4)
+                }, writesInline: false)
+
+                operation.main()
+
+                // Window 0 is corrected on the first tick, while window 1's application is still busy; with one writer for
+                // both, nothing could be corrected until the slow frame landed and the glide would run to a stall.
+                let accepted = CGRect(origin: fixture.operations[0].frameAssignment.finalFrame.origin, size: CGSize(width: 400, height: 1000))
+                expect(animator.retargetedFrames.count) == 1
+                expect(animator.retargetedFrames[0][0]) == accepted
+                expect(animator.retargetedFrames[0][1]).to(beNil())
+                expect(clock.sleepCount) < 10
+                expect(animator.finishCalled).to(beTrue())
+            }
+
+            it("lets a window's picture linger when its recapture fails") {
+                let fixture = self.makeFixture(startFrames: startFrames, targetFrames: targetFrames)
+                let clock = FakeClock()
+                let animator = FakeSnapshotAnimator()
+                var captureCalls = 0
+                // The first capture works; every later one comes back empty, as when the window server is busy.
+                let captureOnce: ([WindowCaptureRequest]) -> [CGImage]? = { requests in
+                    captureCalls += 1
+                    return captureCalls == 1 ? requests.map { _ in AnimatedReflowOperationTests.makeImage() } : nil
+                }
+                let operation = self.makeSnapshotOperation(fixture, clock: clock, animator: animator, capture: captureOnce, backdrop: { _, _ in
+                    AnimatedReflowOperationTests.makeImage(width: 4, height: 4)
+                })
+
+                operation.main()
+
+                expect(captureCalls) > 1
+                expect(animator.crossfadeImages).to(beEmpty())
+                expect(animator.lingering) == [0, 1]
+                expect(animator.finishCalled).to(beTrue())
+            }
+
+            it("judges a recapture's freshness at the display's pixel density") {
+                let fixture = self.makeFixture(startFrames: startFrames, targetFrames: targetFrames)
+                let clock = FakeClock()
+                let animator = FakeSnapshotAnimator()
+                var captureCalls = 0
+                // A Retina display: two pixels per point. Window 1's recapture comes back at one pixel per point, the size a
+                // stale surface would have, while window 0's comes back at the display's density.
+                let captureRetina: ([WindowCaptureRequest]) -> [CGImage]? = { requests in
+                    captureCalls += 1
+                    return requests.map { request in
+                        let size = fixture.window(for: request).frame().size
+                        let scale = captureCalls > 1 && request.windowID == fixture.windows[1].cgID() ? 1 : 2
+                        return AnimatedReflowOperationTests.makeImage(width: Int(size.width) * scale, height: Int(size.height) * scale)
+                    }
+                }
+                let operation = self.makeSnapshotOperation(fixture, clock: clock, animator: animator, capture: captureRetina, backdrop: { _, _ in
+                    AnimatedReflowOperationTests.makeImage(width: 4, height: 4)
+                })
+
+                operation.main()
+
+                expect(animator.crossfadeImages.count) == 1
+                expect(animator.crossfadeImages[0][0]?.width) == Int(fixture.operations[0].frameAssignment.finalFrame.width) * 2
+                expect(animator.crossfadeImages[0][1]).to(beNil())
+                expect(animator.lingering) == [1]
             }
 
             it("dissolves a corrected window to a fresh picture within the glide") {
