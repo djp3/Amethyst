@@ -42,9 +42,11 @@ class AnimatedReflowOperationTests: QuickSpec {
         var shownScreenFrame: CGRect?
         var animateDuration: TimeInterval?
         var completesImmediately = true
-        /// Whether a mid-glide refinement stands in for the overlay reaching its target; `false` keeps the glide pending for good, as when a display is asleep.
+        /// Whether a mid-glide refinement stands in for the overlay reaching its target; `false` keeps the glide pending until `endGlide()` or a stall, as when a display is asleep.
         var endsGlideOnRefinement = true
         var onAnimate: (() -> Void)?
+        /// Called after each dissolve, so a test can end the glide at a moment of its choosing.
+        var onCrossfade: (() -> Void)?
         var framesToPresent: [CGRect] = []
         var finishCalled = false
         var lingering: [Int] = []
@@ -66,11 +68,15 @@ class AnimatedReflowOperationTests: QuickSpec {
             shownBackdrop = backdrop
         }
 
-        /// Any mid-glide refinement stands in for the real overlay reaching its target and ends the pending glide.
-        private func endPendingGlide() {
+        /// Stands in for the real overlay reaching its target and ends the pending glide.
+        func endGlide() {
             let pending = pendingCompletion
             pendingCompletion = nil
             pending?()
+        }
+
+        private func endPendingGlide() {
+            endGlide()
         }
 
         func crossfade(images: [CGImage?], duration: TimeInterval, completion: (() -> Void)?) {
@@ -80,6 +86,7 @@ class AnimatedReflowOperationTests: QuickSpec {
             if endsGlideOnRefinement {
                 endPendingGlide()
             }
+            onCrossfade?()
         }
 
         func animate(duration: TimeInterval, completion: @escaping () -> Void) {
@@ -828,6 +835,72 @@ class AnimatedReflowOperationTests: QuickSpec {
                 expect(animator.crossfadeImages.count) == 1
                 expect(animator.crossfadeImages[0][1]?.width) == 1200
                 expect(constrained.frame()) == accepted
+            }
+
+            it("dissolves a corrected window to a fresh picture within the glide") {
+                let fixture = self.makeFixture(startFrames: startFrames, targetFrames: targetFrames)
+                let constrained = fixture.windows[1]
+                constrained.maximumSize = CGSize(width: 1200, height: 1000)
+                let clock = FakeClock()
+                let animator = FakeSnapshotAnimator()
+                animator.completesImmediately = false
+                // The glide keeps going through the correction and ends only once the fresh picture is in.
+                animator.endsGlideOnRefinement = false
+                animator.onCrossfade = { animator.endGlide() }
+                let captureCurrent: ([WindowCaptureRequest]) -> [CGImage]? = { requests in
+                    requests.map { request in
+                        let window = fixture.windows.first { $0.cgID() == request.windowID }!
+                        return AnimatedReflowOperationTests.makeImage(width: Int(window.frame().width), height: Int(window.frame().height))
+                    }
+                }
+                let operation = self.makeSnapshotOperation(fixture, clock: clock, animator: animator, capture: captureCurrent, backdrop: { _, _ in
+                    AnimatedReflowOperationTests.makeImage(width: 4, height: 4)
+                })
+
+                operation.main()
+
+                // Corrected in the loop, then dissolved in the loop with the time remaining, well before a stall.
+                expect(animator.retargetedFrames.count) == 1
+                expect(animator.crossfadeImages.count) == 1
+                expect(animator.crossfadeImages[0][1]?.width) == 1200
+                expect(animator.crossfadeDurations[0]) > 0.15
+                expect(clock.sleepCount) < 20
+                expect(animator.finishCalled).to(beTrue())
+            }
+
+            it("retries a stale recapture within the glide") {
+                let fixture = self.makeFixture(startFrames: startFrames, targetFrames: targetFrames)
+                let clock = FakeClock()
+                let animator = FakeSnapshotAnimator()
+                animator.completesImmediately = false
+                animator.endsGlideOnRefinement = false
+                // The glide ends on the second dissolve, the one that brings the retried picture in.
+                animator.onCrossfade = { animator.onCrossfade = { animator.endGlide() } }
+                var captureCalls = 0
+                let captureLagging: ([WindowCaptureRequest]) -> [CGImage]? = { requests in
+                    captureCalls += 1
+                    return requests.map { request in
+                        let window = fixture.windows.first { $0.cgID() == request.windowID }!
+                        // The second window's first recapture still shows its old surface, the way a slow renderer does.
+                        let stale = captureCalls == 2 && request.windowID == fixture.windows[1].cgID()
+                        let size = stale ? startFrames[1].size : window.frame().size
+                        return AnimatedReflowOperationTests.makeImage(width: Int(size.width), height: Int(size.height))
+                    }
+                }
+                let operation = self.makeSnapshotOperation(fixture, clock: clock, animator: animator, capture: captureLagging, backdrop: { _, _ in
+                    AnimatedReflowOperationTests.makeImage(width: 4, height: 4)
+                })
+
+                operation.main()
+
+                expect(captureCalls) == 3
+                expect(animator.crossfadeImages.count) == 2
+                expect(animator.crossfadeImages[0][1]).to(beNil())
+                expect(animator.crossfadeImages[1][1]?.width) == Int(fixture.operations[1].frameAssignment.finalFrame.width)
+                // The glide could only end through the second dissolve, so a short glide proves the retry came within it
+                // rather than at a stall's final attempt, which takes over forty sleeps to reach.
+                expect(clock.sleepCount) < 20
+                expect(animator.lingering).to(beEmpty())
             }
 
             it("retries a recapture until the window has redrawn at its accepted size") {
