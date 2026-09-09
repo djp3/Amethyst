@@ -208,12 +208,13 @@ class AnimatedReflowOperationTests: QuickSpec {
         return Fixture(windows: windows, operations: operations)
     }
 
-    private func makeOperation(_ fixture: Fixture, clock: FakeClock, writesInline: Bool = true) -> AnimatedReflowOperation<TestWindow> {
+    private func makeOperation(_ fixture: Fixture, clock: FakeClock, writesInline: Bool = true, drainTimeout: TimeInterval = 1.0) -> AnimatedReflowOperation<TestWindow> {
         return AnimatedReflowOperation(
             frameAssignmentOperations: fixture.operations,
             duration: duration,
             frameInterval: frameInterval,
             writesInline: writesInline,
+            writerDrainTimeout: drainTimeout,
             now: clock.now,
             sleep: clock.sleep
         )
@@ -1300,6 +1301,27 @@ class AnimatedReflowOperationTests: QuickSpec {
                 expect(operation.tickCount) == 3
                 // The glide stops, but the window is left at its tile rather than mid-way, since no reflow may follow.
                 expect(fixture.windows[1].frame()) == fixture.operations[1].frameAssignment.finalFrame
+            }
+
+            it("clamps the focused window with the size it asked for while a slow application is still resizing") {
+                // The focused window shrinks to 400pt and moves to the right edge of the 2000pt screen. Its application takes
+                // longer over the resize than the operation waits before reading sizes back; clamping with the stale 1000pt
+                // size would stop the glide 600pt short and leave the settle to jump the rest.
+                let edgeTarget = CGRect(x: 1600, y: 0, width: 400, height: 1000)
+                let fixture = self.makeFixture(startFrames: [startFrames[0]], targetFrames: [edgeTarget], focusedIndex: 0)
+                let clock = FakeClock()
+                let slow = fixture.windows[0]
+                slow.animationFrameDelay = 0.65
+                let operation = self.makeOperation(fixture, clock: clock, writesInline: false, drainTimeout: 0.5)
+
+                operation.main()
+
+                // The resize lands first, then the last glide frame, then the settle's writes. Clamped with the stale
+                // 1000pt size, the glide could never pass x = 1000; with the 400pt size asked for it nearly reaches the tile.
+                expect(slow.frameHistory.count) >= 3
+                expect(slow.frameHistory[0].size) == edgeTarget.size
+                expect(slow.frameHistory[1].origin.x) > 1500
+                expect(slow.frame()) == edgeTarget
             }
 
             it("leaves windows at their tiles when cancelled right after the in-place resize") {

@@ -20,7 +20,7 @@ private func logAnimation(_ message: String) {
 }
 
 /// How long to wait for slow applications to apply their last frame before moving on.
-private let writerDrainTimeout: TimeInterval = 1.0
+private let defaultWriterDrainTimeout: TimeInterval = 1.0
 
 /// How long a proxy takes to correct itself when an application only reports its real size after the glide has ended.
 private let lateCorrectionDuration: TimeInterval = 0.1
@@ -422,6 +422,7 @@ final class AnimatedReflowOperation<Window: WindowType>: Operation, @unchecked S
     private let duration: TimeInterval
     private let frameInterval: TimeInterval
     private let writesInline: Bool
+    private let writerDrainTimeout: TimeInterval
     private let captureImages: (([WindowCaptureRequest]) -> [CGImage]?)?
     private let captureIsVerifiable: (WindowCaptureRequest) -> Bool
     private let captureBackdrop: ((CGRect, [CGWindowID]) -> CGImage?)?
@@ -457,12 +458,14 @@ final class AnimatedReflowOperation<Window: WindowType>: Operation, @unchecked S
          - screenID: The screen this reflow belongs to; its windows are registered as in flight so other screens leave them alone.
          - now: Monotonic clock, injectable for tests.
          - sleep: Blocking sleep, injectable for tests.
+         - writerDrainTimeout: How long to wait for slow applications to apply their last frame before moving on.
      */
     init(
         frameAssignmentOperations: [FrameAssignmentOperation<Window>],
         duration: TimeInterval,
         frameInterval: TimeInterval = 1.0 / 60.0,
         writesInline: Bool = false,
+        writerDrainTimeout: TimeInterval = defaultWriterDrainTimeout,
         captureImages: (([WindowCaptureRequest]) -> [CGImage]?)? = nil,
         captureIsVerifiable: @escaping (WindowCaptureRequest) -> Bool = { _ in true },
         captureBackdrop: ((CGRect, [CGWindowID]) -> CGImage?)? = nil,
@@ -477,6 +480,7 @@ final class AnimatedReflowOperation<Window: WindowType>: Operation, @unchecked S
         self.duration = duration
         self.frameInterval = frameInterval
         self.writesInline = writesInline
+        self.writerDrainTimeout = writerDrainTimeout
         self.captureImages = captureImages
         self.captureIsVerifiable = captureIsVerifiable
         self.captureBackdrop = captureBackdrop
@@ -1084,8 +1088,10 @@ final class AnimatedReflowOperation<Window: WindowType>: Operation, @unchecked S
         waitForWriters()
         writers.values.forEach { $0.resetStatistics() }
 
-        // Applications may keep a different size than assigned; the glide must clamp and land with the size they kept.
-        for index in participants.indices where participants[index].resizable {
+        // Applications may keep a different size than assigned; the glide must clamp and land with the size they kept. A
+        // window whose application has not applied the resize yet still reports its old size, and adopting that would
+        // send the old size back with every glide frame; the size asked for stays in force until the resize lands.
+        for index in participants.indices where participants[index].resizable && writer(for: participants[index].pid).isIdle {
             guard let accepted = FrameInterpolation.readable(participants[index].window.frame()) else {
                 continue
             }
@@ -1241,7 +1247,8 @@ final class AnimatedReflowOperation<Window: WindowType>: Operation, @unchecked S
 
     /// Waits for every application to apply its newest frame. Returns `false` if a slow application timed out.
     @discardableResult
-    private func waitForWriters(timeout: TimeInterval = writerDrainTimeout) -> Bool {
+    private func waitForWriters(timeout: TimeInterval? = nil) -> Bool {
+        let timeout = timeout ?? writerDrainTimeout
         return writerGroup.wait(timeout: .now() + timeout) == .success
     }
 
