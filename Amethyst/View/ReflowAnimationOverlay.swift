@@ -295,13 +295,23 @@ final class ReflowAnimationOverlay: SnapshotAnimating {
             return
         }
 
-        CATransaction.begin()
         // Nothing else holds the overlay once the reflow operation returns, so the completion must keep it alive itself
-        // until the panel has been taken down; a weak reference here would leave the panel on screen forever.
-        CATransaction.setCompletionBlock {
+        // until the panel has been taken down; a weak reference here would leave the panel on screen forever. A fallback
+        // timer takes the panel down even if the render server never reports the fade complete.
+        var finished = false
+        let finishOnce = {
+            guard !finished else {
+                return
+            }
+            finished = true
             self.tearDown()
             completion()
         }
+        let longestFade = max(fadeDuration, lingering.isEmpty ? 0 : lingerDuration)
+        DispatchQueue.main.asyncAfter(deadline: .now() + longestFade + 0.5, execute: finishOnce)
+
+        CATransaction.begin()
+        CATransaction.setCompletionBlock(finishOnce)
 
         // The backdrop and refreshed proxies fade quickly over windows that already show what they show; proxies that never
         // got a fresh image dissolve slowly into the real window now revealed beneath them.
