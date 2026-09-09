@@ -13,6 +13,12 @@ import os.log
 /// Unified-log channel for animation timing, readable with `log stream --info --predicate 'subsystem == "com.amethyst.Amethyst"'` even in release builds.
 private let animationLog = OSLog(subsystem: "com.amethyst.Amethyst", category: "animation")
 
+/// Records an animation event on both channels: the app's logger, which only prints in debug builds, and the unified log, which is all a release build has.
+private func logAnimation(_ message: String) {
+    log.debug(message)
+    os_log("%{public}s", log: animationLog, type: .info, message)
+}
+
 /// How long to wait for slow applications to apply their last frame before moving on.
 private let writerDrainTimeout: TimeInterval = 1.0
 
@@ -454,8 +460,7 @@ final class AnimatedReflowOperation<Window: WindowType>: Operation, @unchecked S
             case .cancelled:
                 return
             case let .unavailable(reason):
-                log.debug("Animated reflow: snapshot animation unavailable (\(reason)); moving the real windows instead")
-                os_log("Animated reflow: snapshot animation unavailable (%{public}s); moving the real windows instead", log: animationLog, type: .info, reason)
+                logAnimation("Animated reflow: snapshot animation unavailable (\(reason)); moving the real windows instead")
 
                 let resizeStart = now()
                 resizeInPlace(&participants)
@@ -509,8 +514,7 @@ final class AnimatedReflowOperation<Window: WindowType>: Operation, @unchecked S
             return
         }
 
-        log.debug("Animated reflow: proxy/window mismatch after settle: \(mismatches.joined(separator: "; "))")
-        os_log("Animated reflow: proxy/window mismatch after settle: %{public}s", log: animationLog, type: .info, mismatches.joined(separator: "; "))
+        logAnimation("Animated reflow: proxy/window mismatch after settle: \(mismatches.joined(separator: "; "))")
     }
 
     /// Resolves live windows and captures start frames in a single main-thread hop.
@@ -665,7 +669,7 @@ final class AnimatedReflowOperation<Window: WindowType>: Operation, @unchecked S
             // The render server pauses animations, and their completions, while a display sleeps or the main thread stalls.
             // That is not a cancellation: the motion is over as far as anyone can see, so carry on to the exact placement.
             if remainingWaits <= 0 {
-                os_log("Animated reflow: the glide never reported completion; settling anyway", log: animationLog, type: .info)
+                logAnimation("Animated reflow: the glide never reported completion; settling anyway")
                 break
             }
 
@@ -913,7 +917,7 @@ final class AnimatedReflowOperation<Window: WindowType>: Operation, @unchecked S
         guard let captureImages = captureImages, let fresh = captureImages(requests), fresh.count == indices.count else {
             if isFinalAttempt {
                 let pids = indices.map { String(participants[$0].pid) }.joined(separator: ", ")
-                os_log("Animated reflow: recapture failed for pids %{public}s", log: animationLog, type: .info, pids)
+                logAnimation("Animated reflow: recapture failed for pids \(pids)")
             }
             return (nil, [], unverifiable)
         }
@@ -939,7 +943,7 @@ final class AnimatedReflowOperation<Window: WindowType>: Operation, @unchecked S
         }
 
         if isFinalAttempt, !stale.isEmpty {
-            os_log("Animated reflow: window still not redrawn at handoff, keeping old image: %{public}s", log: animationLog, type: .info, stale.joined(separator: "; "))
+            logAnimation("Animated reflow: window still not redrawn at handoff, keeping old image: \(stale.joined(separator: "; "))")
         }
 
         guard !dissolved.isEmpty else {
@@ -1156,13 +1160,10 @@ final class AnimatedReflowOperation<Window: WindowType>: Operation, @unchecked S
         let park = Int(timings.parkDuration * 1000)
         let place = Int(timings.placeDuration * 1000)
         let firstRefinement = Int((timings.firstRefinement ?? -0.001) * 1000)
-        log.debug(
-            "Animated reflow (snapshot, \(mode)): \(windowCount) windows, capture \(capture)ms, park \(park)ms, glide \(duration)s, place \(place)ms, "
+        let glide = String(format: "%.2f", duration)
+        logAnimation(
+            "Animated reflow (snapshot, \(mode)): \(windowCount) windows, capture \(capture)ms, park \(park)ms, glide \(glide)s, place \(place)ms, "
                 + "\(timings.corrected) size-corrected, \(timings.recaptured) recaptured, first refinement at \(firstRefinement)ms"
-        )
-        os_log(
-            "Animated reflow (snapshot, %{public}s): %d windows, capture %dms, park %dms, glide %.2fs, place %dms, %d size-corrected, %d recaptured, first refinement at %dms",
-            log: animationLog, type: .info, mode, windowCount, capture, park, duration, place, timings.corrected, timings.recaptured, firstRefinement
         )
     }
 
@@ -1181,15 +1182,11 @@ final class AnimatedReflowOperation<Window: WindowType>: Operation, @unchecked S
         let slowestApplied = slowest?.statistics.applied ?? 0
         let slowestRequested = slowest?.statistics.requested ?? 0
         let timeoutNote = drained ? "" : "; timed out waiting for it"
+        let glide = String(format: "%.2f", duration)
 
-        log.debug(
-            "Animated reflow (accessibility): resize \(resizeMilliseconds)ms, then \(tickCount) ticks over \(duration)s (\(framesPerSecond) fps); "
+        logAnimation(
+            "Animated reflow (accessibility): resize \(resizeMilliseconds)ms, then \(tickCount) ticks over \(glide)s (\(framesPerSecond) fps); "
                 + "slowest app pid \(slowestPid) averaged \(slowestAverageMilliseconds)ms per write and showed \(slowestApplied) of \(slowestRequested) frames\(timeoutNote)"
-        )
-        os_log(
-            "Animated reflow (accessibility): resize %dms, then %d ticks over %.2fs (%d fps); slowest app pid %d averaged %dms per write and showed %d of %d frames%{public}s",
-            log: animationLog, type: .info,
-            resizeMilliseconds, tickCount, duration, framesPerSecond, slowestPid, slowestAverageMilliseconds, slowestApplied, slowestRequested, timeoutNote
         )
     }
 }
