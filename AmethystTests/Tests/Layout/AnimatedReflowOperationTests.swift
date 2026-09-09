@@ -559,6 +559,13 @@ class AnimatedReflowOperationTests: QuickSpec {
             }
         }
 
+        describe("fake windows") {
+            it("never share a window identifier") {
+                let windows = (0..<50).map { _ in TestWindow(element: nil)! }
+                expect(Set(windows.map { $0.cgID() }).count) == windows.count
+            }
+        }
+
         describe("animating windows registry") {
             it("keeps a window with the screen animating it until that screen releases it") {
                 let registry = AnimatingWindows()

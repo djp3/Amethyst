@@ -17,8 +17,20 @@ final class TestWindow: WindowType {
     static var focused: TestWindow?
 
     private let element: SIAccessibilityElement?
-    private let cgWindowID = CGWindowID(Int.random(in: 1...1000))
+    /// Unique for the life of the test process: the animation code keys its registry, captures and remembered positions on
+    /// this identifier, and two windows drawing the same number by chance would be confused for one another.
+    private let cgWindowID = TestWindow.nextWindowID()
     private let uuid = UUID().uuidString
+
+    private static var lastWindowID: CGWindowID = 0
+    private static let windowIDLock = NSLock()
+
+    private static func nextWindowID() -> CGWindowID {
+        windowIDLock.lock()
+        defer { windowIDLock.unlock() }
+        lastWindowID += 1
+        return lastWindowID
+    }
     private var _frame: CGRect = .zero
     var isFocusedValue = false
     var isResizableValue = true
