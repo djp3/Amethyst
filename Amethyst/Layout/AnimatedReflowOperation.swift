@@ -304,6 +304,11 @@ final class AnimatedReflowOperation<Window: WindowType>: Operation, @unchecked S
         /// Pixels per point of the window's first capture, for validating later captures.
         var pixelsPerPoint: CGFloat = 1
 
+        /// Whether the window's size has to change to reach its target.
+        var needsResize: Bool {
+            return resizable && start.size != target.size
+        }
+
         /// The frame this window should show at `progress` of the accessibility glide: interpolated position, already-final size, kept on screen if focused.
         func frame(at progress: CGFloat) -> CGRect {
             let interpolated = FrameInterpolation.interpolate(from: start, to: target, progress: progress)
@@ -765,60 +770,34 @@ final class AnimatedReflowOperation<Window: WindowType>: Operation, @unchecked S
      - Returns: The indices of windows whose size changes.
      */
     private func hideRealWindows(_ participants: inout [Participant], inPlace: Bool, timings: inout SnapshotTimings) -> [Int] {
-        var resizedIndices: [Int] = []
+        let resizedIndices = participants.indices.filter { participants[$0].needsResize }
 
         if inPlace {
-            var writes: Writes = [:]
-            for index in participants.indices {
-                let participant = participants[index]
-                let resize = participant.resizable && participant.start.size != participant.target.size
-                let frame = CGRect(origin: participant.target.origin, size: resize ? participant.target.size : participant.lastIssued.size)
-                writes[participant.pid, default: [:]][index] = .init(window: participant.window, frame: frame, includingSize: resize)
-                participants[index].lastIssued = frame
-                if resize {
-                    resizedIndices.append(index)
-                }
+            issue(&participants) { participant in
+                let size = participant.needsResize ? participant.target.size : participant.lastIssued.size
+                return (CGRect(origin: participant.target.origin, size: size), participant.needsResize)
             }
-            dispatch(writes)
             return resizedIndices
         }
 
         // Park at the current size first so every window vanishes together, then take the final size out of sight.
         let parking = parkingOrigin()
-        var parkWrites: Writes = [:]
-        for index in participants.indices {
-            let frame = CGRect(origin: CGPoint(x: parking.x, y: participants[index].start.minY), size: participants[index].start.size)
-            parkWrites[participants[index].pid, default: [:]][index] = .init(window: participants[index].window, frame: frame, includingSize: false)
-            participants[index].lastIssued = frame
+        issue(&participants) { participant in
+            (CGRect(origin: CGPoint(x: parking.x, y: participant.start.minY), size: participant.start.size), false)
         }
-        dispatch(parkWrites)
         let parkStart = now()
         waitForWriters(timeout: 0.1)
         timings.parkDuration = now() - parkStart
 
-        var resizeWrites: Writes = [:]
-        for index in participants.indices where participants[index].resizable && participants[index].start.size != participants[index].target.size {
-            let frame = CGRect(origin: participants[index].lastIssued.origin, size: participants[index].target.size)
-            resizeWrites[participants[index].pid, default: [:]][index] = .init(window: participants[index].window, frame: frame, includingSize: true)
-            participants[index].lastIssued = frame
-            resizedIndices.append(index)
+        issue(&participants) { participant in
+            participant.needsResize ? (CGRect(origin: participant.lastIssued.origin, size: participant.target.size), true) : nil
         }
-        dispatch(resizeWrites)
         return resizedIndices
     }
 
     /// Brings the real windows to their targets; only the position changes now. Windows re-laid out in place are already there unless their target was corrected.
     private func placeRealWindows(_ participants: inout [Participant]) -> TimeInterval {
-        var writes: Writes = [:]
-        for index in participants.indices {
-            let frame = CGRect(origin: participants[index].target.origin, size: participants[index].lastIssued.size)
-            guard frame != participants[index].lastIssued else {
-                continue
-            }
-            writes[participants[index].pid, default: [:]][index] = .init(window: participants[index].window, frame: frame, includingSize: false)
-            participants[index].lastIssued = frame
-        }
-        dispatch(writes)
+        issueTargetPositions(&participants)
 
         let start = now()
         waitForWriters(timeout: 0.2)
@@ -993,38 +972,25 @@ final class AnimatedReflowOperation<Window: WindowType>: Operation, @unchecked S
 
     /// Puts every window at its target's position, keeping whatever size it has; skips windows already there.
     private func placeAtTargets(_ participants: inout [Participant]) {
-        var writes: Writes = [:]
-        for index in participants.indices {
-            let frame = CGRect(origin: participants[index].target.origin, size: participants[index].lastIssued.size)
-            guard frame != participants[index].lastIssued else {
-                continue
-            }
-            writes[participants[index].pid, default: [:]][index] = .init(window: participants[index].window, frame: frame, includingSize: false)
-            participants[index].lastIssued = frame
-        }
-        dispatch(writes)
+        issueTargetPositions(&participants)
         waitForWriters(timeout: 0.3)
+    }
+
+    /// Moves every window whose position is not yet its target's; sizes stay whatever was last issued.
+    private func issueTargetPositions(_ participants: inout [Participant]) {
+        issue(&participants) { participant in
+            let frame = CGRect(origin: participant.target.origin, size: participant.lastIssued.size)
+            return frame == participant.lastIssued ? nil : (frame, false)
+        }
     }
 
     // MARK: - Accessibility strategy
 
     /// Phase one: give every window its final size at its current position, so the glide only has to move it. Waits for every application so all windows start gliding together.
     private func resizeInPlace(_ participants: inout [Participant]) {
-        var writes: Writes = [:]
-
-        for index in participants.indices {
-            let participant = participants[index]
-
-            guard participant.resizable, participant.start.size != participant.target.size else {
-                continue
-            }
-
-            let frame = CGRect(origin: participant.start.origin, size: participant.target.size)
-            writes[participant.pid, default: [:]][index] = .init(window: participant.window, frame: frame, includingSize: true)
-            participants[index].lastIssued = frame
+        issue(&participants) { participant in
+            participant.needsResize ? (CGRect(origin: participant.start.origin, size: participant.target.size), true) : nil
         }
-
-        dispatch(writes)
         waitForWriters()
         writers.values.forEach { $0.resetStatistics() }
 
@@ -1056,20 +1022,10 @@ final class AnimatedReflowOperation<Window: WindowType>: Operation, @unchecked S
             }
 
             let progress = FrameInterpolation.easeInOutSine(CGFloat(elapsed / duration))
-            var writes: Writes = [:]
-
-            for index in participants.indices {
-                let frame = participants[index].frame(at: progress)
-
-                guard frame != participants[index].lastIssued else {
-                    continue
-                }
-
-                writes[participants[index].pid, default: [:]][index] = .init(window: participants[index].window, frame: frame, includingSize: false)
-                participants[index].lastIssued = frame
+            issue(&participants) { participant in
+                let frame = participant.frame(at: progress)
+                return frame == participant.lastIssued ? nil : (frame, false)
             }
-
-            dispatch(writes)
             tickCount += 1
 
             let nextTick = tickStart + frameInterval
@@ -1124,6 +1080,31 @@ final class AnimatedReflowOperation<Window: WindowType>: Operation, @unchecked S
     }
 
     // MARK: - Writers
+
+    /**
+     Sends every window the frame `frame` chooses for it, batched per application, and records it as the window's last issued frame.
+
+     - Parameter frame: The frame to issue and whether it includes the size, or `nil` to leave the window alone.
+     - Returns: The indices of the windows that were sent a frame.
+     */
+    @discardableResult
+    private func issue(_ participants: inout [Participant], frame: (Participant) -> (frame: CGRect, includingSize: Bool)?) -> [Int] {
+        var writes: Writes = [:]
+        var issued: [Int] = []
+
+        for index in participants.indices {
+            guard let write = frame(participants[index]) else {
+                continue
+            }
+
+            writes[participants[index].pid, default: [:]][index] = .init(window: participants[index].window, frame: write.frame, includingSize: write.includingSize)
+            participants[index].lastIssued = write.frame
+            issued.append(index)
+        }
+
+        dispatch(writes)
+        return issued
+    }
 
     /// Issues the writes, leaving out windows this operation no longer owns.
     private func dispatch(_ writes: Writes) {
