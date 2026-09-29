@@ -10,11 +10,7 @@
 > - Removing a window from the Binary Space Partitioning layout keeps the rest of the tree intact ([#1890](https://github.com/ianyh/Amethyst/pull/1890)).
 > - A fix for a crash when an application closes windows in quick bursts. The fix lives in the [Silica](https://github.com/djp3/Silica) fork this build depends on ([Amethyst #1889](https://github.com/ianyh/Amethyst/pull/1889), [Silica pull requests](https://github.com/ianyh/Silica/pulls?q=is%3Apr+author%3Adjp3)).
 >
-> Everything below this notice is Ian's README, with additions for the features above.
-
-[![Discussions](https://img.shields.io/github/discussions/ianyh/Amethyst)](https://github.com/ianyh/Amethyst/discussions)
-[![Open Source Helpers](https://www.codetriage.com/ianyh/amethyst/badges/users.svg)](https://www.codetriage.com/ianyh/amethyst)
-[![Reviewed by Hound](https://img.shields.io/badge/Reviewed_by-Hound-8E64B0.svg)](https://houndci.com)
+> 
 
 Tiling window manager for macOS along the lines of [xmonad](https://xmonad.org/).
 
@@ -27,12 +23,6 @@ If you want to learn more about tiling window managers and the features of Ameth
 ## Getting Amethyst
 
 Amethyst is available for direct download on the [releases page](https://github.com/ianyh/Amethyst/releases) or using [homebrew cask](https://github.com/Homebrew/homebrew-cask).
-
-```
-brew install --cask amethyst
-```
-
-Note: that Amethyst now is only supported on macOS 10.15+.
 
 ## Using Amethyst
 
@@ -53,10 +43,6 @@ or run in a terminal:
 defaults write com.apple.dock workspaces-auto-swoosh -bool NO
 killall Dock
 ```
-
-## Troubleshooting
-
-See [Troubleshooting](docs/troubleshooting.md) for some common issues.
 
 ## Configuration
 
@@ -229,24 +215,3 @@ If you would like to test your changes locally, Amethyst can be built using [`fa
 ## Contributing
 
 If you'd like to contribute please branch off of the `development` branch and open pull requests against it rather than `master`. Otherwise just try to stick to the general style of the code.
-
-## Donating
-
-Amethyst is free and always will be. That said, a couple of people have expressed their desire to donate money in appreciation. Given the current political climate I would recommend donating to one of these organizations instead:
-
-* [American Civil Liberties Union](https://www.aclu.org/)
-* [Planned Parenthood](https://www.plannedparenthood.org/)
-* [Southern Poverty Law Center](https://www.splcenter.org/)
-* [National Resources Defense Council](https://www.nrdc.org/)
-* [International Refugee Assistance Project](https://refugeerights.org/)
-* [NAACP Legal Defense Fund](https://www.naacpldf.org/)
-* [The Trevor Project](https://www.thetrevorproject.org/)
-* [Mexican American Legal Defense Fund](https://www.maldef.org/)
-* [ProPublica](https://www.propublica.org/)
-
-And a bunch of technology-oriented ones:
-
-* [National Center for Women & Information Technology](https://ncwit.org/about-ncwit/donate/)
-* [girls who code](https://girlswhocode.com/get-involved/)
-* [Trans*H4CK](https://www.transhack.org/sponsorship/)
-* [Black Girls CODE](https://wearebgc.org/donate/)
