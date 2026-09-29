@@ -1,5 +1,17 @@
 # Amethyst
 
+> **This is a modified version of [Ian Ynda-Hummel's Amethyst](https://github.com/ianyh/Amethyst).** It is maintained by Don Patterson and carries features and fixes that have been proposed upstream but are not yet part of Ian's releases. The official Amethyst, its releases and its documentation live at [ianyh/Amethyst](https://github.com/ianyh/Amethyst). Builds published on this fork's [releases page](https://github.com/djp3/Amethyst/releases) come from the `development` branch here, not from upstream.
+>
+> What this fork adds, with the upstream pull request for each:
+>
+> - Windows animate as they move between tiles ([#1888](https://github.com/ianyh/Amethyst/pull/1888)). Off by default: turn on `animate-windows`, and grant Screen Recording for the smoothest version on macOS 14 or later.
+> - A Tertiary Split Partition layout, key `tsp`, made for very wide and very tall screens ([#1892](https://github.com/ianyh/Amethyst/pull/1892)).
+> - Throwing a window to another screen relayouts the screen it left ([#1891](https://github.com/ianyh/Amethyst/pull/1891)).
+> - Removing a window from the Binary Space Partitioning layout keeps the rest of the tree intact ([#1890](https://github.com/ianyh/Amethyst/pull/1890)).
+> - A fix for a crash when an application closes windows in quick bursts. The fix lives in the [Silica](https://github.com/djp3/Silica) fork this build depends on ([Amethyst #1889](https://github.com/ianyh/Amethyst/pull/1889), [Silica pull requests](https://github.com/ianyh/Silica/pulls?q=is%3Apr+author%3Adjp3)).
+>
+> Everything below this notice is Ian's README, with additions for the features above.
+
 [![Discussions](https://img.shields.io/github/discussions/ianyh/Amethyst)](https://github.com/ianyh/Amethyst/discussions)
 [![Open Source Helpers](https://www.codetriage.com/ianyh/amethyst/badges/users.svg)](https://www.codetriage.com/ianyh/amethyst)
 [![Reviewed by Hound](https://img.shields.io/badge/Reviewed_by-Hound-8E64B0.svg)](https://houndci.com)
