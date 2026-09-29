@@ -1,5 +1,5 @@
 {
-  "originHash" : "fe3d2c8ad5bfad1c11700f1d2199c7af01af5866fc7886f59b9eaee2c9467cd2",
+  "originHash" : "4ec027773e6442b62f78345d83f316698c344b03f17ee2f3a3a5933991b6cb9d",
   "pins" : [
     {
       "identity" : "cartography",
@@ -85,10 +85,10 @@
     {
       "identity" : "silica",
       "kind" : "remoteSourceControl",
-      "location" : "https://github.com/ianyh/silica",
+      "location" : "https://github.com/djp3/Silica",
       "state" : {
-        "branch" : "master",
-        "revision" : "237b2aeba4e59279e2d4e2b0fe637994f9823257"
+        "branch" : "fix-observer-callback-after-unobserve",
+        "revision" : "1c36b13489f94854c1b861cbd7ece3541ff18d22"
       }
     },
     {
