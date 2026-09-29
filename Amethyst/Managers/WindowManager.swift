@@ -966,11 +966,12 @@ extension WindowManager: WindowTransitionTarget {
             // A deliberate move: any animation still moving this window must let go, and the new screen adopts it at once.
             unpark(window, handedOff: AnimatingWindows.shared.handOff([window.cgID()]))
             window.moveScaled(to: screen)
-            if currentScreen != nil {
-                distributeEventToScreen(screen, change: .remove(window: window))
-                markScreenForReflow(screen)
+            if let currentScreen = currentScreen {
+                distributeEventToScreen(currentScreen, change: .remove(window: window))
+                markScreenForReflow(currentScreen)
             }
             distributeEventToScreen(screen, change: .add(window: window))
+            markScreenForReflow(screen)
             window.focus()
         case let .moveWindowToSpaceAtIndex(window, spaceIndex, sourceSpaceIndex):
             guard
