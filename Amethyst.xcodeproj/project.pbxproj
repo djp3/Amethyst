@@ -1304,7 +1304,7 @@
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/djp3/Silica";
 			requirement = {
-				branch = "fix-observer-callback-after-unobserve";
+				branch = master;
 				kind = branch;
 			};
 		};

@@ -87,8 +87,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/djp3/Silica",
       "state" : {
-        "branch" : "fix-observer-callback-after-unobserve",
-        "revision" : "2ebd3cfa48adb369be6825ffc34dd4f5c34f9ee6"
+        "branch" : "master",
+        "revision" : "4d015b6888dcfc33940de51e3257a2a84cbae41a"
       }
     },
     {
