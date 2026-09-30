@@ -200,7 +200,7 @@ This layout does not have a main pane in the way that other layouts do. When add
 
 #### Tertiary Split Partition (TSP)
 
-Panes are divided three ways instead of two. The first window fills the screen. The second takes a third on the right, or at the bottom when the screen is taller than it is wide (a square screen counts as tall), and the third takes a third on the opposite side, leaving the first window in the middle. Further windows divide the side panes the same way, choosing columns or rows from the shape of each pane: the fourth window divides the second window's pane, the fifth divides the third window's, the sixth and seventh take the remaining sides of those two panes, and so on, level by level. The "shrink/expand the main pane" shortcuts change the middle pane's share of the screen, and the main pane count shortcuts move more windows into the middle pane, where they are stacked across the direction of the split.
+Panes are divided three ways instead of two. The first window fills the screen. The second takes a third on the left, or at the top when the screen is taller than it is wide (a square screen counts as tall), and the third takes a third on the opposite side, leaving the first window in the middle. Further windows divide the side panes the same way, choosing columns or rows from the shape of each pane: the fourth window divides the second window's pane, the fifth divides the third window's, the sixth and seventh take the remaining sides of those two panes, and so on, level by level. The "shrink/expand the main pane" shortcuts change the middle pane's share of the screen, and the main pane count shortcuts move more windows into the middle pane, where they are stacked across the direction of the split.
 
 #### Custom (beta)
 

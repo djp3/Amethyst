@@ -68,9 +68,9 @@ enum TertiarySplitAxis {
  A pane in the tree of splits, numbered in the order windows fill the panes.
 
  Node 0 is the root and holds the main pane. Every other node holds one window in its middle and can be divided
- again on either side. Numbers run level by level: the root's right or bottom side is node 1 and its left or top
- side is node 2; each later level numbers the right or bottom sides of the previous level's nodes in order, then
- their left or top sides. Side window `k`, counting from zero, occupies node `k + 1`.
+ again on either side. Numbers run level by level: the root's left or top side is node 1 and its right or bottom
+ side is node 2; each later level numbers the left or top sides of the previous level's nodes in order, then
+ their right or bottom sides. Side window `k`, counting from zero, occupies node `k + 1`.
  */
 struct TertiarySplitNode {
     static let root = TertiarySplitNode(number: 0)
@@ -82,15 +82,15 @@ struct TertiarySplitNode {
         return Int.bitWidth - (number + 1).leadingZeroBitCount - 1
     }
 
-    /// The node dividing this node's right or bottom side.
-    var secondSide: TertiarySplitNode {
+    /// The node dividing this node's left or top side.
+    var firstSide: TertiarySplitNode {
         let positionInLevel = number - ((1 << level) - 1)
         return TertiarySplitNode(number: (1 << (level + 1)) - 1 + positionInLevel)
     }
 
-    /// The node dividing this node's left or top side.
-    var firstSide: TertiarySplitNode {
-        return TertiarySplitNode(number: secondSide.number + (1 << level))
+    /// The node dividing this node's right or bottom side.
+    var secondSide: TertiarySplitNode {
+        return TertiarySplitNode(number: firstSide.number + (1 << level))
     }
 }
 
@@ -143,10 +143,10 @@ struct TertiarySplitPanes {
  side pane is divided three ways again as windows arrive.
 
  A pane wider than it is tall divides into columns; a tall or square pane divides into rows. The first window fills
- the screen. The second takes the right or bottom side and the third takes the left or top side, a third each at the
+ the screen. The second takes the left or top side and the third takes the right or bottom side, a third each at the
  default ratio. Later windows divide the side panes into thirds the same way, level by level: the fourth divides the
  second window's pane and the fifth the third window's, then the sixth and seventh take the remaining sides of those
- two panes, and so on, always filling the right or bottom sides of a level before its left or top sides.
+ two panes, and so on, always filling the left or top sides of a level before its right or bottom sides.
  */
 class TertiarySplitPartitionLayout<Window: WindowType>: Layout<Window>, PanedLayout {
     override static var layoutName: String { return "Tertiary Split Partition" }
@@ -209,11 +209,11 @@ class TertiarySplitPartitionLayout<Window: WindowType>: Layout<Window>, PanedLay
         var frames = root.axis.perpendicular.divide(root.middle, into: mainWindowCount)
 
         var sideFrames = [CGRect](repeating: .zero, count: sideWindowCount)
-        if let second = root.second {
-            assignFrames(under: TertiarySplitNode.root.secondSide, in: second, sideWindowCount: sideWindowCount, to: &sideFrames)
-        }
         if let first = root.first {
             assignFrames(under: TertiarySplitNode.root.firstSide, in: first, sideWindowCount: sideWindowCount, to: &sideFrames)
+        }
+        if let second = root.second {
+            assignFrames(under: TertiarySplitNode.root.secondSide, in: second, sideWindowCount: sideWindowCount, to: &sideFrames)
         }
         frames += sideFrames
 
@@ -252,11 +252,11 @@ class TertiarySplitPartitionLayout<Window: WindowType>: Layout<Window>, PanedLay
         )
         frames[node.number - 1] = panes.middle
 
-        if let second = panes.second {
-            assignFrames(under: node.secondSide, in: second, sideWindowCount: sideWindowCount, to: &frames)
-        }
         if let first = panes.first {
             assignFrames(under: node.firstSide, in: first, sideWindowCount: sideWindowCount, to: &frames)
+        }
+        if let second = panes.second {
+            assignFrames(under: node.secondSide, in: second, sideWindowCount: sideWindowCount, to: &frames)
         }
     }
 }
