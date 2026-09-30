@@ -44,31 +44,31 @@ class TertiarySplitPartitionLayoutTests: QuickSpec {
             it("numbers the sides of each node level by level") {
                 let root = TertiarySplitNode.root
                 expect(root.level).to(equal(0))
-                expect(root.secondSide.number).to(equal(1))
-                expect(root.firstSide.number).to(equal(2))
+                expect(root.firstSide.number).to(equal(1))
+                expect(root.secondSide.number).to(equal(2))
 
                 let node1 = TertiarySplitNode(number: 1)
                 expect(node1.level).to(equal(1))
-                expect(node1.secondSide.number).to(equal(3))
-                expect(node1.firstSide.number).to(equal(5))
+                expect(node1.firstSide.number).to(equal(3))
+                expect(node1.secondSide.number).to(equal(5))
 
                 let node2 = TertiarySplitNode(number: 2)
-                expect(node2.secondSide.number).to(equal(4))
-                expect(node2.firstSide.number).to(equal(6))
+                expect(node2.firstSide.number).to(equal(4))
+                expect(node2.secondSide.number).to(equal(6))
 
                 let node3 = TertiarySplitNode(number: 3)
                 expect(node3.level).to(equal(2))
-                expect(node3.secondSide.number).to(equal(7))
-                expect(node3.firstSide.number).to(equal(11))
+                expect(node3.firstSide.number).to(equal(7))
+                expect(node3.secondSide.number).to(equal(11))
 
                 let node6 = TertiarySplitNode(number: 6)
-                expect(node6.secondSide.number).to(equal(10))
-                expect(node6.firstSide.number).to(equal(14))
+                expect(node6.firstSide.number).to(equal(10))
+                expect(node6.secondSide.number).to(equal(14))
 
                 let node7 = TertiarySplitNode(number: 7)
                 expect(node7.level).to(equal(3))
-                expect(node7.secondSide.number).to(equal(15))
-                expect(node7.firstSide.number).to(equal(23))
+                expect(node7.firstSide.number).to(equal(15))
+                expect(node7.secondSide.number).to(equal(23))
             }
         }
 
@@ -84,19 +84,19 @@ class TertiarySplitPartitionLayoutTests: QuickSpec {
                 ]))
             }
 
-            it("gives the second window the right third") {
+            it("gives the second window the left third") {
                 let (screen, windows, windowSet) = fixture(width: 2700, height: 1350, windowCount: 2)
                 let layout = TertiarySplitPartitionLayout<TestWindow>()
 
                 let frameAssignments = layout.frameAssignments(windowSet, on: screen)!
 
                 frameAssignments.verify(frames: expected(windows, [
-                    CGRect(x: 0, y: 0, width: 1800, height: 1350),
-                    CGRect(x: 1800, y: 0, width: 900, height: 1350)
+                    CGRect(x: 900, y: 0, width: 1800, height: 1350),
+                    CGRect(x: 0, y: 0, width: 900, height: 1350)
                 ]))
             }
 
-            it("gives the third window the left third") {
+            it("gives the third window the right third") {
                 let (screen, windows, windowSet) = fixture(width: 2700, height: 1350, windowCount: 3)
                 let layout = TertiarySplitPartitionLayout<TestWindow>()
 
@@ -104,12 +104,12 @@ class TertiarySplitPartitionLayoutTests: QuickSpec {
 
                 frameAssignments.verify(frames: expected(windows, [
                     CGRect(x: 900, y: 0, width: 900, height: 1350),
-                    CGRect(x: 1800, y: 0, width: 900, height: 1350),
-                    CGRect(x: 0, y: 0, width: 900, height: 1350)
+                    CGRect(x: 0, y: 0, width: 900, height: 1350),
+                    CGRect(x: 1800, y: 0, width: 900, height: 1350)
                 ]))
             }
 
-            it("divides the second window's pane for the fourth window, in rows because that pane is tall") {
+            it("divides the second window's pane for the fourth window, in rows because that pane is tall, top first") {
                 let (screen, windows, windowSet) = fixture(width: 2700, height: 1350, windowCount: 4)
                 let layout = TertiarySplitPartitionLayout<TestWindow>()
 
@@ -117,9 +117,9 @@ class TertiarySplitPartitionLayoutTests: QuickSpec {
 
                 frameAssignments.verify(frames: expected(windows, [
                     CGRect(x: 900, y: 0, width: 900, height: 1350),
-                    CGRect(x: 1800, y: 0, width: 900, height: 900),
-                    CGRect(x: 0, y: 0, width: 900, height: 1350),
-                    CGRect(x: 1800, y: 900, width: 900, height: 450)
+                    CGRect(x: 0, y: 450, width: 900, height: 900),
+                    CGRect(x: 1800, y: 0, width: 900, height: 1350),
+                    CGRect(x: 0, y: 0, width: 900, height: 450)
                 ]))
             }
 
@@ -131,13 +131,13 @@ class TertiarySplitPartitionLayoutTests: QuickSpec {
 
                 frameAssignments.verify(frames: expected(windows, [
                     CGRect(x: 900, y: 0, width: 900, height: 1350),
-                    CGRect(x: 1800, y: 450, width: 900, height: 450),
                     CGRect(x: 0, y: 450, width: 900, height: 450),
-                    CGRect(x: 1800, y: 900, width: 600, height: 450),
-                    CGRect(x: 0, y: 900, width: 900, height: 450),
+                    CGRect(x: 1800, y: 450, width: 900, height: 450),
+                    CGRect(x: 300, y: 0, width: 600, height: 450),
                     CGRect(x: 1800, y: 0, width: 900, height: 450),
-                    CGRect(x: 0, y: 0, width: 900, height: 450),
-                    CGRect(x: 2400, y: 900, width: 300, height: 450)
+                    CGRect(x: 0, y: 900, width: 900, height: 450),
+                    CGRect(x: 1800, y: 900, width: 900, height: 450),
+                    CGRect(x: 0, y: 0, width: 300, height: 450)
                 ]))
             }
 
@@ -149,14 +149,14 @@ class TertiarySplitPartitionLayoutTests: QuickSpec {
 
                 frameAssignments.verify(frames: expected(windows, [
                     CGRect(x: 1000, y: 200, width: 900, height: 1350),
-                    CGRect(x: 1900, y: 200, width: 900, height: 1350),
-                    CGRect(x: 100, y: 200, width: 900, height: 1350)
+                    CGRect(x: 100, y: 200, width: 900, height: 1350),
+                    CGRect(x: 1900, y: 200, width: 900, height: 1350)
                 ]))
             }
         }
 
         describe("tall screen") {
-            it("puts the second window at the bottom and the third at the top") {
+            it("puts the second window at the top and the third at the bottom") {
                 let (screen, windows, windowSet) = fixture(width: 1350, height: 2700, windowCount: 3)
                 let layout = TertiarySplitPartitionLayout<TestWindow>()
 
@@ -164,8 +164,8 @@ class TertiarySplitPartitionLayoutTests: QuickSpec {
 
                 frameAssignments.verify(frames: expected(windows, [
                     CGRect(x: 0, y: 900, width: 1350, height: 900),
-                    CGRect(x: 0, y: 1800, width: 1350, height: 900),
-                    CGRect(x: 0, y: 0, width: 1350, height: 900)
+                    CGRect(x: 0, y: 0, width: 1350, height: 900),
+                    CGRect(x: 0, y: 1800, width: 1350, height: 900)
                 ]))
             }
 
@@ -177,9 +177,9 @@ class TertiarySplitPartitionLayoutTests: QuickSpec {
 
                 frameAssignments.verify(frames: expected(windows, [
                     CGRect(x: 0, y: 900, width: 1350, height: 900),
-                    CGRect(x: 0, y: 1800, width: 900, height: 900),
-                    CGRect(x: 0, y: 0, width: 1350, height: 900),
-                    CGRect(x: 900, y: 1800, width: 450, height: 900)
+                    CGRect(x: 450, y: 0, width: 900, height: 900),
+                    CGRect(x: 0, y: 1800, width: 1350, height: 900),
+                    CGRect(x: 0, y: 0, width: 450, height: 900)
                 ]))
             }
         }
@@ -192,8 +192,8 @@ class TertiarySplitPartitionLayoutTests: QuickSpec {
                 let frameAssignments = layout.frameAssignments(windowSet, on: screen)!
 
                 frameAssignments.verify(frames: expected(windows, [
-                    CGRect(x: 0, y: 0, width: 2700, height: 1800),
-                    CGRect(x: 0, y: 1800, width: 2700, height: 900)
+                    CGRect(x: 0, y: 900, width: 2700, height: 1800),
+                    CGRect(x: 0, y: 0, width: 2700, height: 900)
                 ]))
             }
         }
@@ -212,8 +212,8 @@ class TertiarySplitPartitionLayoutTests: QuickSpec {
                 frameAssignments.verify(frames: expected(windows, [
                     CGRect(x: 900, y: 0, width: 900, height: 675),
                     CGRect(x: 900, y: 675, width: 900, height: 675),
-                    CGRect(x: 1800, y: 0, width: 900, height: 1350),
-                    CGRect(x: 0, y: 0, width: 900, height: 1350)
+                    CGRect(x: 0, y: 0, width: 900, height: 1350),
+                    CGRect(x: 1800, y: 0, width: 900, height: 1350)
                 ]))
 
                 layout.increaseMainPaneCount()
@@ -221,10 +221,10 @@ class TertiarySplitPartitionLayoutTests: QuickSpec {
 
                 frameAssignments = layout.frameAssignments(windowSet, on: screen)!
                 frameAssignments.verify(frames: expected(windows, [
-                    CGRect(x: 0, y: 0, width: 1800, height: 450),
-                    CGRect(x: 0, y: 450, width: 1800, height: 450),
-                    CGRect(x: 0, y: 900, width: 1800, height: 450),
-                    CGRect(x: 1800, y: 0, width: 900, height: 1350)
+                    CGRect(x: 900, y: 0, width: 1800, height: 450),
+                    CGRect(x: 900, y: 450, width: 1800, height: 450),
+                    CGRect(x: 900, y: 900, width: 1800, height: 450),
+                    CGRect(x: 0, y: 0, width: 900, height: 1350)
                 ]))
 
                 layout.decreaseMainPaneCount()
@@ -234,9 +234,9 @@ class TertiarySplitPartitionLayoutTests: QuickSpec {
                 frameAssignments = layout.frameAssignments(windowSet, on: screen)!
                 frameAssignments.verify(frames: expected(windows, [
                     CGRect(x: 900, y: 0, width: 900, height: 1350),
-                    CGRect(x: 1800, y: 0, width: 900, height: 900),
-                    CGRect(x: 0, y: 0, width: 900, height: 1350),
-                    CGRect(x: 1800, y: 900, width: 900, height: 450)
+                    CGRect(x: 0, y: 450, width: 900, height: 900),
+                    CGRect(x: 1800, y: 0, width: 900, height: 1350),
+                    CGRect(x: 0, y: 0, width: 900, height: 450)
                 ]))
 
                 layout.decreaseMainPaneCount()
@@ -251,9 +251,9 @@ class TertiarySplitPartitionLayoutTests: QuickSpec {
                 let frameAssignments = layout.frameAssignments(windowSet, on: screen)!
 
                 frameAssignments.verify(frames: expected(windows, [
-                    CGRect(x: 0, y: 0, width: 675, height: 1800),
-                    CGRect(x: 675, y: 0, width: 675, height: 1800),
-                    CGRect(x: 0, y: 1800, width: 1350, height: 900)
+                    CGRect(x: 0, y: 900, width: 675, height: 1800),
+                    CGRect(x: 675, y: 900, width: 675, height: 1800),
+                    CGRect(x: 0, y: 0, width: 1350, height: 900)
                 ]))
             }
         }
@@ -271,12 +271,12 @@ class TertiarySplitPartitionLayoutTests: QuickSpec {
 
                 frameAssignments.verify(frames: expected(windows, [
                     CGRect(x: 675, y: 0, width: 1350, height: 1350),
-                    CGRect(x: 2025, y: 450, width: 675, height: 450),
                     CGRect(x: 0, y: 450, width: 675, height: 450),
-                    CGRect(x: 2025, y: 900, width: 675, height: 450),
-                    CGRect(x: 0, y: 900, width: 675, height: 450),
+                    CGRect(x: 2025, y: 450, width: 675, height: 450),
+                    CGRect(x: 0, y: 0, width: 675, height: 450),
                     CGRect(x: 2025, y: 0, width: 675, height: 450),
-                    CGRect(x: 0, y: 0, width: 675, height: 450)
+                    CGRect(x: 0, y: 900, width: 675, height: 450),
+                    CGRect(x: 2025, y: 900, width: 675, height: 450)
                 ]))
             }
 
@@ -290,8 +290,8 @@ class TertiarySplitPartitionLayoutTests: QuickSpec {
 
                 var frameAssignments = layout.frameAssignments(two.windowSet, on: two.screen)!
                 frameAssignments.verify(frames: expected(two.windows, [
-                    CGRect(x: 0, y: 0, width: 2025, height: 1350),
-                    CGRect(x: 2025, y: 0, width: 675, height: 1350)
+                    CGRect(x: 675, y: 0, width: 2025, height: 1350),
+                    CGRect(x: 0, y: 0, width: 675, height: 1350)
                 ]))
 
                 let three = fixture(width: 2700, height: 1350, windowCount: 3)
@@ -302,8 +302,8 @@ class TertiarySplitPartitionLayoutTests: QuickSpec {
                 frameAssignments = layout.frameAssignments(three.windowSet, on: three.screen)!
                 frameAssignments.verify(frames: expected(three.windows, [
                     CGRect(x: 900, y: 0, width: 900, height: 1350),
-                    CGRect(x: 1800, y: 0, width: 900, height: 1350),
-                    CGRect(x: 0, y: 0, width: 900, height: 1350)
+                    CGRect(x: 0, y: 0, width: 900, height: 1350),
+                    CGRect(x: 1800, y: 0, width: 900, height: 1350)
                 ]))
             }
 
@@ -319,14 +319,14 @@ class TertiarySplitPartitionLayoutTests: QuickSpec {
 
                 let mainAssignment = assignments.forWindows(wide.windows[..<1])[0].frameAssignment
                 expect(mainAssignment.resizeRules.unconstrainedDimension).to(equal(.horizontal))
-                let draggedMain = CGRect(x: 0, y: 0, width: 2025, height: 1350)
+                let draggedMain = CGRect(x: 675, y: 0, width: 2025, height: 1350)
                 wideLayout.recommendMainPaneRatio(mainAssignment.impliedMainPaneRatio(windowFrame: draggedMain))
 
                 assignments = wideLayout.frameAssignments(wide.windowSet, on: wide.screen)!
                 assignments.forWindows(wide.windows[..<1]).verify(frames: [draggedMain])
 
                 let sideAssignment = assignments.forWindows(wide.windows[1...])[0].frameAssignment
-                let draggedSide = CGRect(x: 1800, y: 0, width: 900, height: 1350)
+                let draggedSide = CGRect(x: 0, y: 0, width: 900, height: 1350)
                 wideLayout.recommendMainPaneRatio(sideAssignment.impliedMainPaneRatio(windowFrame: draggedSide))
 
                 assignments = wideLayout.frameAssignments(wide.windowSet, on: wide.screen)!
@@ -338,7 +338,7 @@ class TertiarySplitPartitionLayoutTests: QuickSpec {
 
                 let tallMainAssignment = assignments.forWindows(tall.windows[..<1])[0].frameAssignment
                 expect(tallMainAssignment.resizeRules.unconstrainedDimension).to(equal(.vertical))
-                let draggedTallMain = CGRect(x: 0, y: 0, width: 1350, height: 2025)
+                let draggedTallMain = CGRect(x: 0, y: 675, width: 1350, height: 2025)
                 tallLayout.recommendMainPaneRatio(tallMainAssignment.impliedMainPaneRatio(windowFrame: draggedTallMain))
 
                 assignments = tallLayout.frameAssignments(tall.windowSet, on: tall.screen)!
