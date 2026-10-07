@@ -361,6 +361,12 @@ extension WindowManager {
         }
     }
 
+    func displayTilingState() {
+        for screenManager in screens.screenManagers {
+            screenManager.displayTilingStateHUD()
+        }
+    }
+
     func displayWindowCountHUD() {
         guard userConfiguration.enablesWindowCountHUD() else {
             return
