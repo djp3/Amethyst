@@ -430,13 +430,17 @@ final class ScreenManager<Delegate: ScreenManagerDelegate>: NSObject, Codable {
         displayCustomHUD(title: content.title, description: content.description)
     }
 
-    /// Shows whether tiling is enabled or disabled, following the same preference as the layout HUD.
+    /// Shows whether tiling is enabled or disabled, following the same preference as the layout HUD. The HUD window is
+    /// created and shown on the main thread, whichever thread toggled tiling.
     func displayTilingStateHUD() {
         guard userConfiguration.enablesLayoutHUD() else {
             return
         }
 
-        displayCustomHUD(title: userConfiguration.tilingEnabled ? "Tiling Enabled" : "Tiling Disabled")
+        let title = userConfiguration.tilingEnabled ? "Tiling Enabled" : "Tiling Disabled"
+        DispatchQueue.main.async {
+            self.displayCustomHUD(title: title)
+        }
     }
 
     @objc func hideLayoutHUD(_ sender: AnyObject) {
