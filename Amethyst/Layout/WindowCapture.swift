@@ -7,6 +7,148 @@
 //
 
 import Cocoa
+import os.log
+
+private let captureLog = OSLog(subsystem: "com.amethyst.Amethyst", category: "animation")
+
+/// Writes a line about window capture to the system log, in the same category as the animation timings.
+private func logCapture(_ message: String) {
+    os_log("%{public}s", log: captureLog, type: .info, message)
+}
+
+/**
+ Keeps a stalled window server from stalling reflows.
+
+ A capture that the window server does not answer blocks its thread until the system gives up on it, thirty seconds later. The gate bounds the damage three ways: at most `maximumInFlight` captures run at once, so a stall cannot swallow the thread pool; a batch is given up after `deadline`, so the reflow falls back to moving the real windows instead of waiting; and after a batch has timed out, captures are refused for `pauseAfterTimeout`, so the reflows that follow fall back at once.
+ */
+final class WindowCaptureGate {
+    static let shared = WindowCaptureGate()
+
+    private let maximumInFlight: Int
+    private let deadline: TimeInterval
+    private let pauseAfterTimeout: TimeInterval
+    private let now: () -> TimeInterval
+    private let report: (String) -> Void
+    private let slots: DispatchSemaphore
+    private let queue = DispatchQueue(label: "Amethyst.WindowCaptureGate", qos: .userInitiated, attributes: .concurrent)
+    private let lock = NSLock()
+    private var pausedUntil: TimeInterval?
+
+    /**
+     - Parameters:
+         - maximumInFlight: How many captures may run at the same time.
+         - deadline: How long a batch may take before it is given up.
+         - pauseAfterTimeout: How long captures are refused after a batch has timed out.
+         - now: The current time, in seconds.
+         - report: Receives one line when captures are paused and one when they resume.
+     */
+    init(
+        maximumInFlight: Int = 16,
+        deadline: TimeInterval = 1,
+        pauseAfterTimeout: TimeInterval = 15,
+        now: @escaping () -> TimeInterval = { Date().timeIntervalSinceReferenceDate },
+        report: @escaping (String) -> Void = logCapture
+    ) {
+        self.maximumInFlight = maximumInFlight
+        self.deadline = deadline
+        self.pauseAfterTimeout = pauseAfterTimeout
+        self.now = now
+        self.report = report
+        self.slots = DispatchSemaphore(value: maximumInFlight)
+    }
+
+    /// Whether captures are being refused because a batch timed out recently.
+    var isPaused: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+
+        guard let pausedUntil = pausedUntil else {
+            return false
+        }
+        guard now() < pausedUntil else {
+            self.pausedUntil = nil
+            report("Window capture resumed after the pause")
+            return false
+        }
+        return true
+    }
+
+    /**
+     Runs `capture` for every input at the same time and collects the results in order.
+
+     - Returns: One result per input, or `nil` if captures are paused, a slot did not come free before the deadline, the batch did not finish before the deadline, or any capture returned `nil`. A capture still running when the batch is given up keeps its slot until it returns, and its result is dropped.
+     */
+    func perform<Input, Output>(_ inputs: [Input], _ capture: @escaping (Input) -> Output?) -> [Output]? {
+        guard !inputs.isEmpty else {
+            return []
+        }
+        guard !isPaused else {
+            return nil
+        }
+
+        let limit = DispatchTime.now() + deadline
+        let results = Results<Output>(count: inputs.count)
+        let group = DispatchGroup()
+
+        for (index, input) in inputs.enumerated() {
+            guard slots.wait(timeout: limit) == .success else {
+                pause("no capture slot came free within \(deadline)s")
+                return nil
+            }
+
+            group.enter()
+            queue.async { [slots] in
+                let output = capture(input)
+                slots.signal()
+                results.store(output, at: index)
+                group.leave()
+            }
+        }
+
+        guard group.wait(timeout: limit) == .success else {
+            pause("window capture did not finish within \(deadline)s")
+            return nil
+        }
+
+        return results.all()
+    }
+
+    private func pause(_ reason: String) {
+        lock.lock()
+        defer { lock.unlock() }
+
+        let alreadyPaused = pausedUntil.map { now() < $0 } ?? false
+        pausedUntil = now() + pauseAfterTimeout
+        if !alreadyPaused {
+            report("Window capture paused for \(pauseAfterTimeout)s: \(reason)")
+        }
+    }
+
+    /// The results of one batch, filled in from the capture threads.
+    private final class Results<Output> {
+        private let lock = NSLock()
+        private var outputs: [Output?]
+
+        init(count: Int) {
+            outputs = [Output?](repeating: nil, count: count)
+        }
+
+        func store(_ output: Output?, at index: Int) {
+            lock.lock()
+            outputs[index] = output
+            lock.unlock()
+        }
+
+        /// Every result, or `nil` if any is missing.
+        func all() -> [Output]? {
+            lock.lock()
+            defer { lock.unlock() }
+
+            let present = outputs.compactMap { $0 }
+            return present.count == outputs.count ? present : nil
+        }
+    }
+}
 
 /**
  Minimal bridge to the two private SkyLight (window server) functions the snapshot animation needs.
@@ -48,9 +190,9 @@ enum SkyLight {
     /**
      Captures the current contents of the given windows.
 
-     Requires the Screen Recording permission; without it the window server returns nothing. Each window is captured separately because a single call with several IDs yields one composite image, not one per window. The captures run concurrently, since each is a synchronous round trip to the window server of roughly 15ms.
+     Requires the Screen Recording permission; without it the window server returns nothing. Each window is captured separately because a single call with several IDs yields one composite image, not one per window. The captures run concurrently through `WindowCaptureGate`, since each is a synchronous round trip to the window server of roughly 15ms that can, when the window server stalls, block for thirty seconds.
 
-     - Returns: One image per window ID, in the same order, or `nil` if any capture failed.
+     - Returns: One image per window ID, in the same order, or `nil` if any capture failed or the gate refused the batch.
      */
     static func captureImages(for windowIDs: [CGWindowID]) -> [CGImage]? {
         guard let functions = functions, !windowIDs.isEmpty else {
@@ -58,18 +200,9 @@ enum SkyLight {
         }
 
         let connection = functions.mainConnectionID()
-        var images = [CGImage?](repeating: nil, count: windowIDs.count)
-        let lock = NSLock()
-
-        DispatchQueue.concurrentPerform(iterations: windowIDs.count) { index in
-            let image = captureImage(of: windowIDs[index], connection: connection, functions: functions)
-            lock.lock()
-            images[index] = image
-            lock.unlock()
+        return WindowCaptureGate.shared.perform(windowIDs) { windowID in
+            captureImage(of: windowID, connection: connection, functions: functions)
         }
-
-        let captured = images.compactMap { $0 }
-        return captured.count == windowIDs.count ? captured : nil
     }
 
     private static func captureImage(of windowID: CGWindowID, connection: Int32, functions: Functions) -> CGImage? {
