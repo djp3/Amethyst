@@ -461,6 +461,87 @@ class AnimatedReflowOperationTests: QuickSpec {
             }
         }
 
+        describe("window capture gate") {
+            it("collects results in order when captures finish in time") {
+                let gate = WindowCaptureGate()
+
+                expect(gate.perform([1, 2, 3]) { $0 * 10 }) == [10, 20, 30]
+                expect(gate.perform([Int]()) { $0 }) == []
+                expect(gate.isPaused).to(beFalse())
+            }
+
+            it("treats one failed capture as a failed batch without pausing") {
+                let gate = WindowCaptureGate()
+
+                expect(gate.perform([1, 2]) { $0 == 2 ? nil : $0 }).to(beNil())
+                expect(gate.isPaused).to(beFalse())
+            }
+
+            it("gives up a slow batch at the deadline, refuses captures while paused, and resumes afterwards") {
+                var time: TimeInterval = 0
+                var reports = [String]()
+                let gate = WindowCaptureGate(deadline: 0.05, pauseAfterTimeout: 10, now: { time }, report: { reports.append($0) })
+                let release = DispatchSemaphore(value: 0)
+
+                let started = Date()
+                expect(gate.perform([1]) { value -> Int? in release.wait(); return value }).to(beNil())
+                expect(Date().timeIntervalSince(started)).to(beLessThan(1))
+                expect(gate.isPaused).to(beTrue())
+                expect(reports.count) == 1
+                expect(reports[0]).to(contain("paused for 10.0s"))
+                release.signal()
+
+                var captured = false
+                expect(gate.perform([1]) { value -> Int? in captured = true; return value }).to(beNil())
+                expect(captured).to(beFalse())
+
+                time = 10
+                expect(gate.perform([1]) { $0 }) == [1]
+                expect(gate.isPaused).to(beFalse())
+                expect(reports.count) == 2
+                expect(reports[1]).to(contain("resumed"))
+            }
+
+            it("runs no more captures at once than it has slots") {
+                let gate = WindowCaptureGate(maximumInFlight: 2, deadline: 5)
+                let lock = NSLock()
+                var running = 0
+                var peak = 0
+
+                let results = gate.perform(Array(1...6)) { value -> Int? in
+                    lock.lock(); running += 1; peak = max(peak, running); lock.unlock()
+                    Thread.sleep(forTimeInterval: 0.02)
+                    lock.lock(); running -= 1; lock.unlock()
+                    return value
+                }
+
+                expect(results) == [1, 2, 3, 4, 5, 6]
+                expect(peak) == 2
+            }
+
+            it("fails fast when every slot is held by a stalled capture") {
+                var reports = [String]()
+                let gate = WindowCaptureGate(maximumInFlight: 1, deadline: 0.1, report: { reports.append($0) })
+                let release = DispatchSemaphore(value: 0)
+                let stalledBatchDone = DispatchSemaphore(value: 0)
+
+                DispatchQueue.global().async {
+                    _ = gate.perform([1]) { value -> Int? in release.wait(); return value }
+                    stalledBatchDone.signal()
+                }
+                Thread.sleep(forTimeInterval: 0.02)
+
+                let started = Date()
+                expect(gate.perform([2]) { $0 }).to(beNil())
+                expect(Date().timeIntervalSince(started)).to(beLessThan(1))
+                expect(gate.isPaused).to(beTrue())
+
+                release.signal()
+                stalledBatchDone.wait()
+                expect(reports.first).to(contain("paused"))
+            }
+        }
+
         describe("screen capture permission hint") {
             it("is offered once per preferences store") {
                 let suiteName = "AmethystTests.\(UUID().uuidString)"
