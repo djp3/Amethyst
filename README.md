@@ -9,7 +9,7 @@
 > - Throwing a window to another screen relayouts the screen it left ([#1891](https://github.com/ianyh/Amethyst/pull/1891)).
 > - Removing a window from the Binary Space Partitioning layout keeps the rest of the tree intact ([#1890](https://github.com/ianyh/Amethyst/pull/1890)).
 > - Toggling tiling shows a Tiling Enabled or Tiling Disabled notice, and every skipped reflow is written to the system log with its reason ([#1894](https://github.com/ianyh/Amethyst/pull/1894)).
-> - An application that is slow to answer Accessibility when it launches is adopted after retries spread over about a minute, or when it next becomes active, instead of being left untiled, and each attempt is written to the system log ([#1898](https://github.com/ianyh/Amethyst/pull/1898)).
+> - An application that is slow to answer Accessibility is adopted after retries spread over about a minute, or when it next becomes active, instead of being left untiled; a window whose frame could not be read is no longer floated as if it were small; and each attempt and decision is written to the system log ([#1898](https://github.com/ianyh/Amethyst/pull/1898)).
 > - A fix for a crash when an application closes windows in quick bursts. The fix lives in the [Silica](https://github.com/djp3/Silica) fork this build depends on ([Amethyst #1889](https://github.com/ianyh/Amethyst/pull/1889), [Silica pull requests](https://github.com/ianyh/Silica/pulls?q=is%3Apr+author%3Adjp3)).
 >
 > 
