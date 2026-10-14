@@ -6,79 +6,85 @@
 //  Copyright © 2016 Ian Ynda-Hummel. All rights reserved.
 //
 
-import CCNLaunchAtLoginItem
 import CoreServices
-import Crashlytics
-import Fabric
 import Foundation
+import LoginServiceKit
 import RxCocoa
 import RxSwift
+import Silica
 import Sparkle
+import SwiftyBeaver
 
-final class AppDelegate: NSObject, NSApplicationDelegate {
-    private var loginItem: CCNLaunchAtLoginItem?
+class AppDelegate: NSObject, NSApplicationDelegate {
+    static let windowManagerEncodingKey = "EncodedWindowManager"
+
     @IBOutlet var preferencesWindowController: PreferencesWindowController?
 
-    fileprivate var windowManager: WindowManager?
-    private var hotKeyManager: HotKeyManager?
+    fileprivate var windowManager: WindowManager<SIApplication>?
+    private var hotKeyManager: HotKeyManager<SIApplication>?
 
     fileprivate var statusItem: NSStatusItem?
     @IBOutlet var statusItemMenu: NSMenu?
     @IBOutlet var versionMenuItem: NSMenuItem?
     @IBOutlet var startAtLoginMenuItem: NSMenuItem?
     @IBOutlet var toggleGlobalTilingMenuItem: NSMenuItem?
+    @IBOutlet var layoutsMenuItem: NSMenuItem?
 
     private var isFirstLaunch = true
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        if ProcessInfo.processInfo.arguments.index(of: "--log") == nil {
-            LogManager.log?.minLevel = .warning
-        } else {
-            LogManager.log?.minLevel = .trace
-        }
-
         #if DEBUG
-            LogManager.log?.minLevel = .trace
+            log.addDestination(ConsoleDestination())
         #endif
 
-        LogManager.log?.info("Logging is enabled")
+        if CommandLine.arguments.contains("--log") {
+            let destination = ConsoleDestination()
+            destination.useNSLog = true
+            log.addDestination(destination)
+        }
+
+        log.info("Logging is enabled")
+        log.debug("Debug logging is enabled")
 
         UserConfiguration.shared.delegate = self
         UserConfiguration.shared.load()
 
         #if RELEASE
-            let appcastURLString = { () -> String? in
+            let appcastURLString: String? = {
                 if UserConfiguration.shared.useCanaryBuild() {
                     return Bundle.main.infoDictionary?["SUCanaryFeedURL"] as? String
                 } else {
                     return Bundle.main.infoDictionary?["SUFeedURL"] as? String
                 }
-            }()!
+            }()
 
-            SUUpdater.shared().feedURL = URL(string: appcastURLString)
-
-            if let fabricData = Bundle.main.infoDictionary?["Fabric"] as? [String: AnyObject], fabricData["APIKey"] != nil {
-                if UserConfiguration.shared.shouldSendCrashReports() {
-                    LogManager.log?.info("Crash reporting enabled")
-                    Fabric.with([Crashlytics.self])
-                }
+            if let appcastURLString = appcastURLString, let url = URL(string: appcastURLString) {
+                SUUpdater.shared().feedURL = url
+            } else {
+                log.error("Sparkle feed URL is missing or malformed in Info.plist")
             }
         #endif
 
         preferencesWindowController?.window?.level = .floating
 
-        windowManager = WindowManager(userConfiguration: UserConfiguration.shared)
+        if let encodedWindowManager = UserDefaults.standard.data(forKey: AppDelegate.windowManagerEncodingKey), UserConfiguration.shared.restoreLayoutsOnLaunch() {
+            let decoder = JSONDecoder()
+            windowManager = try? decoder.decode(WindowManager<SIApplication>.self, from: encodedWindowManager)
+        }
+
+        let resolvedWindowManager = windowManager ?? WindowManager(userConfiguration: UserConfiguration.shared)
+        windowManager = resolvedWindowManager
         hotKeyManager = HotKeyManager(userConfiguration: UserConfiguration.shared)
 
-        hotKeyManager?.setUpWithWindowManager(windowManager!, configuration: UserConfiguration.shared)
+        hotKeyManager?.setUpWithWindowManager(resolvedWindowManager, configuration: UserConfiguration.shared, appDelegate: self)
     }
 
     override func awakeFromNib() {
         super.awakeFromNib()
 
-        let version = Bundle.main.infoDictionary?["CFBundleVersion"] as! String
-        let shortVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as! String
-        let statusItemImage = NSImage(named: NSImage.Name(rawValue: "icon-statusitem"))
+        let version = (Bundle.main.infoDictionary?["CFBundleVersion"] as? String) ?? "unknown"
+        let shortVersion = (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "unknown"
+        let statusItemImage = NSImage(named: "icon-statusitem")
         statusItemImage?.isTemplate = true
 
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -86,11 +92,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem?.menu = statusItemMenu
         statusItem?.highlightMode = true
 
+        let hideMenuBarIcon: Bool = UserConfiguration.shared.hideMenuBarIcon()
+        statusItem?.isVisible = !hideMenuBarIcon
+
         versionMenuItem?.title = "Version \(shortVersion) (\(version))"
         toggleGlobalTilingMenuItem?.title = "Disable"
 
-        loginItem = CCNLaunchAtLoginItem(for: Bundle.main)
-        startAtLoginMenuItem?.state = (loginItem!.isActive() ? .on : .off)
+        startAtLoginMenuItem?.state = (LoginServiceKit.isExistLoginItems(at: Bundle.main.bundlePath) ? .on : .off)
+
+        // Set up status item menu delegate to refresh layouts when main menu is opened
+        statusItemMenu?.delegate = self
     }
 
     func applicationDidBecomeActive(_ notification: Notification) {
@@ -102,26 +113,41 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         showPreferencesWindow(self)
     }
 
+    func applicationWillTerminate(_ notification: Notification) {
+        guard let windowManager = windowManager else {
+            return
+        }
+
+        do {
+            let encoder = JSONEncoder()
+            let encodedWindowManager = try encoder.encode(windowManager)
+            UserDefaults.standard.set(encodedWindowManager, forKey: AppDelegate.windowManagerEncodingKey)
+        } catch {
+            log.error("Failed to encode window manager: \(error)")
+        }
+    }
+
     @IBAction func toggleStartAtLogin(_ sender: AnyObject) {
         if startAtLoginMenuItem?.state == .off {
-            loginItem?.activate()
+            LoginServiceKit.addLoginItems(at: Bundle.main.bundlePath)
         } else {
-            loginItem?.deActivate()
+            LoginServiceKit.removeLoginItems(at: Bundle.main.bundlePath)
         }
-        startAtLoginMenuItem?.state = (loginItem!.isActive() ? .on : .off)
+        startAtLoginMenuItem?.state = (LoginServiceKit.isExistLoginItems(at: Bundle.main.bundlePath) ? .on : .off)
     }
 
     @IBAction func toggleGlobalTiling(_ sender: AnyObject) {
         UserConfiguration.shared.tilingEnabled = !UserConfiguration.shared.tilingEnabled
-        windowManager?.markAllScreensForReflowWithChange(.unknown)
+        windowManager?.markAllScreensForReflow()
+    }
+
+    @IBAction func resetLayouts(_ sender: AnyObject) {
+        UserDefaults.standard.removeObject(forKey: AppDelegate.windowManagerEncodingKey)
+        windowManager?.reset()
     }
 
     @IBAction func relaunch(_ sender: AnyObject) {
-        let executablePath = Bundle.main.executablePath! as NSString
-        let fileSystemRepresentedPath = executablePath.fileSystemRepresentation
-        let fileSystemPath = FileManager.default.string(withFileSystemRepresentation: fileSystemRepresentedPath, length: Int(strlen(fileSystemRepresentedPath)))
-        Process.launchedProcess(launchPath: fileSystemPath, arguments: [])
-        NSApp.terminate(self)
+        AppManager.relaunch()
     }
 
     @IBAction func showPreferencesWindow(_ sender: AnyObject) {
@@ -129,22 +155,95 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
-        if UserConfiguration.shared.hasCustomConfiguration() {
-            let alert = NSAlert()
-            alert.alertStyle = .warning
-            alert.messageText = "Warning"
-            alert.informativeText = "You have a .amethyst file, which can override in-app preferences. You may encounter unexpected behavior."
-            alert.runModal()
-        }
-
         preferencesWindowController?.showWindow(nil)
         NSApp.activate(ignoringOtherApps: true)
+
+        presentDotfileWarningIfNecessary()
     }
 
     @IBAction func checkForUpdates(_ sender: AnyObject) {
         #if RELEASE
             SUUpdater.shared().checkForUpdates(sender)
         #endif
+    }
+
+    private func presentDotfileWarningIfNecessary() {
+        let shouldWarn = !UserDefaults.standard.bool(forKey: "disable-dotfile-conflict-warning")
+        if shouldWarn && UserConfiguration.shared.hasCustomConfiguration() {
+            let alert = NSAlert()
+            alert.alertStyle = .warning
+            alert.messageText = "Warning"
+            alert.informativeText = "You have a .amethyst file, which can override in-app preferences. You may encounter unexpected behavior."
+            alert.showsSuppressionButton = true
+            alert.runModal()
+
+            if alert.suppressionButton?.state == .on {
+                UserDefaults.standard.set(true, forKey: "disable-dotfile-conflict-warning")
+            }
+        }
+    }
+
+    private func populateLayoutsMenu() {
+        guard let layoutsMenuItem = layoutsMenuItem,
+              let submenu = layoutsMenuItem.submenu else {
+            return
+        }
+
+        // Clear existing items
+        submenu.removeAllItems()
+
+        // Get screen manager: try focused screen first, then screen under mouse cursor
+        let screenManager: ScreenManager<WindowManager<SIApplication>>? = {
+            if let focused = windowManager?.focusedScreenManager() {
+                return focused
+            }
+            // Fallback to screen containing mouse cursor (useful when clicking menu bar)
+            let mouseLocation = NSEvent.mouseLocation
+            if let nsScreen = NSScreen.screens.first(where: { NSMouseInRect(mouseLocation, $0.frame, false) }) {
+                let amScreen = AMScreen(screen: nsScreen)
+                return windowManager?.screenManager(for: amScreen)
+            }
+            return nil
+        }()
+
+        guard let screenManager = screenManager else {
+            let errorItem = NSMenuItem(title: "Unable to determine current screen", action: nil, keyEquivalent: "")
+            errorItem.isEnabled = false
+            submenu.addItem(errorItem)
+            return
+        }
+
+        // Get layouts from the screen manager (not from global config)
+        let layouts = screenManager.layoutsInfo
+
+        // Check if no layouts are available and return early
+        if layouts.isEmpty {
+            let noLayoutsItem = NSMenuItem(title: "No layouts enabled", action: nil, keyEquivalent: "")
+            noLayoutsItem.isEnabled = false
+            submenu.addItem(noLayoutsItem)
+            return
+        }
+
+        // Add menu items for each layout in the screen manager
+        for layoutInfo in layouts {
+            let menuItem = NSMenuItem(title: layoutInfo.name, action: #selector(selectLayout(_:)), keyEquivalent: "")
+            menuItem.target = self
+            menuItem.representedObject = layoutInfo.key
+            menuItem.state = layoutInfo.isSelected ? .on : .off
+
+            submenu.addItem(menuItem)
+        }
+    }
+
+    @IBAction func selectLayout(_ sender: NSMenuItem) {
+        guard let layoutKey = sender.representedObject as? String,
+              let windowManager = windowManager,
+              let screenManager = windowManager.focusedScreenManager() else {
+            return
+        }
+
+        screenManager.selectLayout(layoutKey)
+        // Menu will be refreshed automatically when next opened via NSMenuDelegate
     }
 }
 
@@ -154,18 +253,29 @@ extension AppDelegate: NSWindowDelegate {
     }
 }
 
+extension AppDelegate: NSMenuDelegate {
+    func menuWillOpen(_ menu: NSMenu) {
+        // Refresh layouts menu when main status item menu is about to open
+        if menu == statusItemMenu {
+            populateLayoutsMenu()
+        }
+    }
+}
+
 extension AppDelegate: UserConfigurationDelegate {
     func configurationGlobalTilingDidChange(_ userConfiguration: UserConfiguration) {
         var statusItemImage: NSImage?
         if UserConfiguration.shared.tilingEnabled == true {
-            statusItemImage = NSImage(named: NSImage.Name(rawValue: "icon-statusitem"))
-            toggleGlobalTilingMenuItem?.title = "Disable"
+            statusItemImage = NSImage(named: "icon-statusitem")
+            toggleGlobalTilingMenuItem?.title = "Disable Tiling"
         } else {
-            statusItemImage = NSImage(named: NSImage.Name(rawValue: "icon-statusitem-disabled"))
-            toggleGlobalTilingMenuItem?.title = "Enable"
+            statusItemImage = NSImage(named: "icon-statusitem-disabled")
+            toggleGlobalTilingMenuItem?.title = "Enable Tiling"
         }
         statusItemImage?.isTemplate = true
         statusItem?.image = statusItemImage
+
+        windowManager?.displayTilingState()
     }
 
     func configurationAccessibilityPermissionsDidChange(_ userConfiguration: UserConfiguration) {

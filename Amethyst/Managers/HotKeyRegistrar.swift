@@ -7,7 +7,7 @@
 //
 
 import Foundation
-import Log
+import KeyboardShortcuts
 import MASShortcut
 
 protocol HotKeyRegistrar {
@@ -16,26 +16,43 @@ protocol HotKeyRegistrar {
 
 extension HotKeyManager: HotKeyRegistrar {
     func registerHotKey(with string: String?, modifiers: AMModifierFlags?, handler: @escaping () -> Void, defaultsKey: String, override: Bool) {
-        let userDefaults = UserDefaults.standard
+        let name = KeyboardShortcuts.Name(defaultsKey)
+        let migrationKey = "migrated-\(name.rawValue)"
+        let isMigrated = UserDefaults.standard.bool(forKey: migrationKey)
 
-        if userDefaults.object(forKey: defaultsKey) != nil && !override {
-            MASShortcutBinder.shared().bindShortcut(withDefaultsKey: defaultsKey, toAction: handler)
+        defer {
+            UserDefaults.standard.set(true, forKey: migrationKey)
+            KeyboardShortcuts.onKeyUp(for: name, action: handler)
+        }
+
+        if override {
+            MASShortcutBinder.shared().breakBinding(withDefaultsKey: defaultsKey)
+            UserDefaults.standard.removeObject(forKey: defaultsKey)
+            KeyboardShortcuts.setShortcut(nil, for: name)
+        }
+
+        guard KeyboardShortcuts.getShortcut(for: name) == nil && (!isMigrated || override) else {
             return
         }
 
-        // If a command is specified, set it as the default shortcut
-        if let string = string, let modifiers = modifiers {
-            if let keyCodes = stringToKeyCodes[string.lowercased()], !keyCodes.isEmpty {
-                let shortcut = MASShortcut(keyCode: UInt(keyCodes[0]), modifierFlags: modifiers)
-                MASShortcutBinder.shared().registerDefaultShortcuts([ defaultsKey: shortcut as Any ])
-            } else {
-                LogManager.log?.warning("String \"\(string)\" does not map to any keycodes")
-            }
+        if let value = UserDefaults.standard.object(forKey: defaultsKey),
+           let shortcut = ValueTransformer(forName: .keyedUnarchiveFromDataTransformerName)?.transformedValue(value) as? MASShortcut {
+            let shortcutKey = KeyboardShortcuts.Key(rawValue: shortcut.keyCode)
+            let newShortcut = KeyboardShortcuts.Shortcut(shortcutKey, modifiers: shortcut.modifierFlags)
+            // Keeping the old shortcuts in defaults for now to prevent data loss
+//            UserDefaults.standard.removeObject(forKey: defaultsKey)
+            KeyboardShortcuts.setShortcut(newShortcut, for: name)
+            return
         }
 
-        MASShortcutBinder.shared().bindShortcut(withDefaultsKey: defaultsKey, toAction: handler)
-
-        // Note that the shortcut binder above only sets the default value, not the stored value, so we explicitly store it here.
-        userDefaults.set(userDefaults.object(forKey: defaultsKey), forKey: defaultsKey)
+        if let string = string, let modifiers = modifiers {
+            if let keyCodes = stringToKeyCodes[string.lowercased()], !keyCodes.isEmpty {
+                let shortcutKey = KeyboardShortcuts.Key(rawValue: keyCodes[0])
+                let shortcut = KeyboardShortcuts.Shortcut(shortcutKey, modifiers: modifiers)
+                KeyboardShortcuts.setShortcut(shortcut, for: name)
+            } else {
+                log.warning("String \"\(string)\" does not map to any keycodes")
+            }
+        }
     }
 }

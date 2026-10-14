@@ -9,6 +9,44 @@
 import AppKit
 import Foundation
 
+enum Manageable {
+    case manageable
+    case unmanageable
+    case undetermined
+}
+
+private let ignoredBundleIDs = Set([
+    "com.apple.dashboard",
+    "com.apple.loginwindow",
+    "com.apple.notificationcenterui",
+    "com.apple.wifi.WiFiAgent",
+    "com.apple.Spotlight",
+    "com.apple.systemuiserver",
+    "com.apple.dock",
+    "com.apple.AirPlayUIAgent",
+    "com.apple.dock.extra",
+    "com.apple.PowerChime",
+    "com.apple.WebKit.Networking",
+    "com.apple.WebKit.WebContent",
+    "com.apple.WebKit.GPU",
+    "com.apple.FollowUpUI",
+    "com.apple.controlcenter",
+    "com.apple.SoftwareUpdateNotificationManager",
+    "com.apple.TextInputMenuAgent",
+    "com.apple.TextInputSwitcher",
+    "com.apple.WindowManager",
+    "com.apple.accessibility.AXVisualSupportAgent",
+    "com.apple.talagent",
+    "com.apple.wallpaper.agent",
+    "com.apple.CharacterPaletteIM",
+    "com.apple.LocalAuthentication.UIAgent",
+    "com.apple.security.Keychain-Circle-Notification",
+    "com.apple.backgroundtaskmanagement.agent",
+    "com.apple.CoreLocationAgent",
+    "com.apple.OSDUIHelper",
+    "com.apple.ViewBridgeAuxiliary"
+])
+
 protocol BundleIdentifiable {
     var bundleIdentifier: String? { get }
 }
@@ -16,18 +54,19 @@ protocol BundleIdentifiable {
 extension NSRunningApplication: BundleIdentifiable {}
 
 extension NSRunningApplication {
-    var isManageable: Bool {
-        guard let bundleIdentifier = bundleIdentifier, !isAgent() else {
-            return false
+    var isManageable: Manageable {
+        if let bundleIdentifier = bundleIdentifier, ignoredBundleIDs.contains(bundleIdentifier) {
+            return .unmanageable
         }
 
-        switch bundleIdentifier {
-        case "com.apple.dashboard":
-            return false
-        case "com.apple.loginwindow":
-            return false
-        default:
-            return true
+        guard isFinishedLaunching else {
+            return .undetermined
         }
+
+        guard case .regular = activationPolicy else {
+            return .undetermined
+        }
+
+        return .manageable
     }
 }

@@ -1,13 +1,22 @@
 disabled_rules:
-        - function_body_length
-        - closing_brace
-        - statement_position
-        - force_cast
-        - force_try
-        - variable_name_min_length
+    - function_body_length
+    - closing_brace
+    - statement_position
+    - force_cast
+    - force_try
+    - no_space_in_method_call
+    - file_length
+    - type_body_length
 included:
-        - Amethyst
-line_length: 200
-file_length: 500
-type_body_length: 400
+    - Amethyst
+    - AmethystTests
+line_length:
+    warning: 200
+    ignores_comments: true
 cyclomatic_complexity: 15
+large_tuple: 3
+nesting:
+    type_level: 2
+identifier_name:
+    excluded:
+        - id

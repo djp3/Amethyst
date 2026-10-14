@@ -15,23 +15,11 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>0.12.0</string>
+	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleSignature</key>
 	<string>????</string>
 	<key>CFBundleVersion</key>
-	<string>57</string>
-	<key>Fabric</key>
-	<dict>
-		<key>Kits</key>
-		<array>
-			<dict>
-				<key>KitInfo</key>
-				<dict/>
-				<key>KitName</key>
-				<string>Crashlytics</string>
-			</dict>
-		</array>
-	</dict>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.utilities</string>
 	<key>LSMinimumSystemVersion</key>
@@ -43,8 +31,10 @@
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
 	<key>SUCanaryFeedURL</key>
-	<string>https://ianyh.com/amethyst/canary-appcast.xml</string>
+	<string>https://github.com/djp3/Amethyst/releases/latest/download/appcast.xml</string>
 	<key>SUFeedURL</key>
-	<string>https://ianyh.com/amethyst/appcast.xml</string>
+	<string>https://github.com/djp3/Amethyst/releases/latest/download/appcast.xml</string>
+	<key>SUPublicEDKey</key>
+	<string>BlhimGK/QNInJec/WnPd8wq+ZBP84a1+urIA/slLP7g=</string>
 </dict>
 </plist>

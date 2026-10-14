@@ -6,8 +6,6 @@
 //  Copyright © 2016 Ian Ynda-Hummel. All rights reserved.
 //
 
-import Log
+import SwiftyBeaver
 
-enum LogManager {
-    internal(set) static var log: Logger? = Logger()
-}
+let log = SwiftyBeaver.self

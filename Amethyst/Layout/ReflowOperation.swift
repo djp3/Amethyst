@@ -2,282 +2,285 @@
 //  ReflowOperation.swift
 //  Amethyst
 //
-//  Created by Ian Ynda-Hummel on 12/3/15.
-//  Copyright © 2015 Ian Ynda-Hummel. All rights reserved.
+//  Created by Ian Ynda-Hummel on 3/19/19.
+//  Copyright © 2019 Ian Ynda-Hummel. All rights reserved.
 //
 
 import Foundation
 import Silica
 
-public struct FrameAssignment {
-    let frame: CGRect
-    let window: SIWindow
-    let focused: Bool
-    let screenFrame: CGRect
+/**
+ Runs `block` synchronously on the main thread.
+
+ Frame application happens on the main thread, but reflow operations execute on a background queue. Executing inline when already on main means callers (including tests that drive operations directly) never deadlock.
+ */
+func runOnMainSync(_ block: () -> Void) {
+    if Thread.isMainThread {
+        block()
+    } else {
+        DispatchQueue.main.sync(execute: block)
+    }
 }
 
-open class ReflowOperation: Operation {
-    open let screen: NSScreen
-    open let windows: [SIWindow]
-    fileprivate let windowActivityCache: WindowActivityCache
+/// Possible dimensions without constraints.
+enum UnconstrainedDimension: Int {
+    /// The dimension along the x-axis.
+    case horizontal
 
-    public init(screen: NSScreen, windows: [SIWindow], windowActivityCache: WindowActivityCache) {
-        self.screen = screen
+    /// The dimension along the y-axis.
+    case vertical
+}
+
+/**
+ This struct defines what adjustments to a particular window frame are allowed and tracks its size as a proportion of available space (for use in resize calculations).
+
+ Some window resizes reflect valid adjustments to the frame layout.
+ 
+ Some window resizes would not be allowed due to hard constraints.
+ */
+struct ResizeRules {
+    /// Whether or not the resize rule is applying to the main frame.
+    let isMain: Bool
+
+    /// The dimension that is allowed to scale.
+    let unconstrainedDimension: UnconstrainedDimension
+
+    /// the scale factor for the unconstrained dimension.
+    let scaleFactor: CGFloat
+
+    /**
+     Determines the new value of the dimension based on the scale factor.
+     
+     Given a new frame, decide which dimension will be honored and return its size.
+     
+     - Parameters:
+        - frame: The frame to transform.
+        - negatePadding: Whether or not to take padding into account.
+     */
+    func scaledDimension(_ frame: CGRect, negatePadding: Bool) -> CGFloat {
+        let dimension: CGFloat = {
+            switch unconstrainedDimension {
+            case .horizontal: return frame.width
+            case .vertical: return frame.height
+            }
+        }()
+
+        let padding = UserConfiguration.shared.windowMargins() ? UserConfiguration.shared.windowMarginSize() : 0
+        return negatePadding ? dimension + padding : dimension
+    }
+}
+
+struct LayoutWindow<Window: WindowType>: Equatable {
+    let id: Window.WindowID
+    let frame: CGRect
+    let isFocused: Bool
+
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        return lhs.id == rhs.id
+    }
+}
+
+struct WindowSet<Window: WindowType> {
+    let windows: [LayoutWindow<Window>]
+    private let isWindowWithIDActive: (Window.WindowID) -> Bool
+    private let isWindowWithIDFloating: (Window.WindowID) -> Bool
+    private let windowForID: (Window.WindowID) -> Window?
+
+    init(
+        windows: [LayoutWindow<Window>],
+        isWindowWithIDActive: @escaping (Window.WindowID) -> Bool,
+        isWindowWithIDFloating: @escaping (Window.WindowID) -> Bool,
+        windowForID: @escaping (Window.WindowID) -> Window?
+    ) {
         self.windows = windows
-        self.windowActivityCache = windowActivityCache
-        super.init()
+        self.isWindowWithIDActive = isWindowWithIDActive
+        self.isWindowWithIDFloating = isWindowWithIDFloating
+        self.windowForID = windowForID
     }
 
-    open func adjustedFrameForLayout(_ screen: NSScreen) -> CGRect {
-        var frame = UserConfiguration.shared.ignoreMenuBar() ? screen.frameIncludingDockAndMenu() : screen.frameWithoutDockOrMenu()
+    func isWindowActive(_ window: LayoutWindow<Window>) -> Bool {
+        return isWindowWithIDActive(window.id)
+    }
 
-        if UserConfiguration.shared.windowMargins() {
-            /* Inset for producing half of the full padding around screen as collapse only adds half of it to all windows */
-            let padding = floor(UserConfiguration.shared.windowMarginSize() / 2)
+    func isWindowFloating(_ window: LayoutWindow<Window>) -> Bool {
+        return isWindowWithIDFloating(window.id)
+    }
 
-            frame.origin.x += padding
-            frame.origin.y += padding
-            frame.size.width -= 2 * padding
-            frame.size.height -= 2 * padding
+    /// Resolves the live window for a frame assignment, or `nil` if the window is gone, inactive, or floating.
+    func window(for frameAssignment: FrameAssignment<Window>) -> Window? {
+        guard let window = windowForID(frameAssignment.window.id) else {
+            return nil
         }
 
-        return frame
+        guard isWindowWithIDActive(frameAssignment.window.id), !isWindowWithIDFloating(frameAssignment.window.id) else {
+            return nil
+        }
+
+        return window
     }
 
-    open func performFrameAssignments(_ frameAssignments: [FrameAssignment]) {
-        if self.isCancelled {
+    func perform(frameAssignment: FrameAssignment<Window>) {
+        guard let window = window(for: frameAssignment) else {
             return
         }
 
-        for frameAssignment in frameAssignments {
-            if !windowActivityCache.windowIsActive(frameAssignment.window) {
-                return
-            }
-        }
+        frameAssignment.perform(withWindow: window)
+    }
+}
 
-		//Set intermediate positions for the windows
-        if UserConfiguration.shared.animateWindows() {
-            let step: CGFloat = CGFloat(0.05)
-            for i in stride(from:step, to:1.0, by:step) {
-                for frameAssignment in frameAssignments {
-                    LogManager.log?.debug("Intermediate Screen: \(screen.screenIdentifier()) -- Frame Assignment: \(frameAssignment)")
+class FrameAssignmentOperation<Window: WindowType>: Operation {
+    let frameAssignment: FrameAssignment<Window>
+    let windowSet: WindowSet<Window>
 
-                    let dx = frameAssignment.frame.origin.x - frameAssignment.window.frame().origin.x
-                    let x = frameAssignment.window.frame().origin.x + i*dx
-                    let dy = frameAssignment.frame.origin.y - frameAssignment.window.frame().origin.y
-                    let y = frameAssignment.window.frame().origin.y + i*dy
-                    let dw = frameAssignment.frame.width - frameAssignment.window.frame().width
-                    let width = frameAssignment.window.frame().width + i*dw
-                    let dh = frameAssignment.frame.height - frameAssignment.window.frame().height
-                    let height = frameAssignment.window.frame().height + i*dh
-                    if x != frameAssignment.window.frame().origin.x ||
-                       y != frameAssignment.window.frame().origin.y ||
-                       width != frameAssignment.window.frame().width ||
-                       height != frameAssignment.window.frame().height {
-                        self.assignFrame(CGRect(x: x,
-                                                y: y,
-                                            width: width,
-                                           height: height),
-                                         toWindow: frameAssignment.window,
-									      focused: frameAssignment.focused,
-								      screenFrame: frameAssignment.screenFrame)
-                    }
-                }
-            }
-        }
-
-        //Set the final position for the windows
-        for frameAssignment in frameAssignments {
-            LogManager.log?.debug("Screen: \(screen.screenIdentifier()) -- Frame Assignment: \(frameAssignment)")
-
-            self.assignFrame(frameAssignment.frame,toWindow: frameAssignment.window, focused: frameAssignment.focused, screenFrame: frameAssignment.screenFrame)
-        }
+    init(frameAssignment: FrameAssignment<Window>, windowSet: WindowSet<Window>) {
+        self.frameAssignment = frameAssignment
+        self.windowSet = windowSet
+        super.init()
     }
 
-    open func isDegenerateWindow(window: SIWindow) -> Bool {
-        let window_frame = window.frame()
-        if window_frame.origin.x.isInfinite {
-            return true
+    override func main() {
+        guard !isCancelled else {
+            return
         }
-        if window_frame.origin.x.isNaN {
-            return true
-        }
-        if window_frame.origin.y.isInfinite {
-            return true
-        }
-        if window_frame.origin.y.isNaN {
-            return true
-        }
-        if window_frame.width <= 0.0 {
-            return true
-        }
-        if window_frame.width.isInfinite {
-            return true
-        }
-        if window_frame.width.isNaN {
-            return true
-        }
-        if window_frame.height <= 0.0 {
-            return true
-        }
-        if window_frame.height.isInfinite {
-            return true
-        }
-        if window_frame.height.isNaN {
-            return true
-        }
-        return false
+
+        windowSet.perform(frameAssignment: frameAssignment)
+    }
+}
+
+/// Encapsulation of an assignment of a frame to a window.
+struct FrameAssignment<Window: WindowType> {
+    /// The frame to apply to the window.
+    let frame: CGRect
+
+    /// The window that will be moved and sized.
+    let window: LayoutWindow<Window>
+
+    /// The frame of the screen being occupied.
+    let screenFrame: CGRect
+
+    /// The rules governing constraints to frame transforms
+    let resizeRules: ResizeRules
+
+    /// If `true`, then  window margins won't be applied
+    let disableWindowMargins: Bool
+
+    /// The settings the final frame applies: window margins and minimum sizes. Tests pass a blank configuration so their frames do not depend on the preferences of whoever runs them.
+    let configuration: UserConfiguration
+
+    init(frame: CGRect, window: LayoutWindow<Window>, screenFrame: CGRect, resizeRules: ResizeRules, configuration: UserConfiguration = .shared) {
+        self.frame = frame
+        self.window =  window
+        self.screenFrame = screenFrame
+        self.resizeRules = resizeRules
+        self.disableWindowMargins = false
+        self.configuration = configuration
     }
 
-    private func categorizeWindows(candidateFrames: [CGRect]) -> ([SIWindow], [SIWindow]) {
-
-        var displaced: [SIWindow] = []
-        var aligned: [SIWindow] = []
-        for window in self.windows {
-            //Sometimes the windows become degenerate for some reason, ignore them
-            if !isDegenerateWindow(window:window) {
-                var min_distance = FLT_MAX
-                let window_frame = window.frame()
-                let windows_center_x = window_frame.origin.x + (window_frame.width/2.0)
-                let windows_center_y = window_frame.origin.y + (window_frame.height/2.0)
-                for frame in candidateFrames {
-                    let frame_center_x = frame.origin.x + (frame.width/2.0)
-                    let frame_center_y = frame.origin.y + (frame.height/2.0)
-                    let distance_x = (frame_center_x - windows_center_x)
-                    let distance_y = (frame_center_y - windows_center_y)
-                    let distance = sqrt(distance_x*distance_x + distance_y*distance_y)
-                    if Float(distance) < min_distance {
-                        min_distance = Float(distance)
-                    }
-                }
-                if min_distance < 1.0 {
-                    aligned.append(window)
-                }
-                else {
-                    displaced.append(window)
-                }
-            }
-        }
-        return (displaced, aligned)
-
+    init(frame: CGRect, window: LayoutWindow<Window>, screenFrame: CGRect, resizeRules: ResizeRules, disableWindowMargins: Bool, configuration: UserConfiguration = .shared) {
+        self.frame = frame
+        self.window =  window
+        self.screenFrame = screenFrame
+        self.resizeRules = resizeRules
+        self.disableWindowMargins = disableWindowMargins
+        self.configuration = configuration
     }
 
-    open func assignWindowsToFramesBasedOnDistance(candidateFrames: [CGRect]) {
+    /// The final frame is the desired frame, but transformed to provide desired padding
+    var finalFrame: CGRect {
+        var ret = frame
+        let padding = floor(configuration.windowMarginSize() / 2)
 
-        var candidateFramesMutable = candidateFrames
-        //Find those windows that are not perfectly on top of a frame to assign first, because those are the ones that have been newly created or manually moved
-        let (displacedWindows, alignedWindows) = categorizeWindows(candidateFrames: candidateFrames)
-
-        //Now preferentially assign displaced windows a location
-        let screenFrame = adjustedFrameForLayout(screen)
-        let focusedWindow = SIWindow.focused()
-        var frameAssignments: [FrameAssignment] = []
-        for window in displacedWindows {
-            var min_distance = FLT_MAX
-            var min_index = -1
-
-            //Sometimes the windows become degenerate for some reason
-            if !isDegenerateWindow(window:window) {
-                let window_frame = window.frame()
-                let windows_center_x = window_frame.origin.x + (window_frame.width/2.0)
-                let windows_center_y = window_frame.origin.y + (window_frame.height/2.0)
-                for (index, frame) in candidateFramesMutable.enumerated() {
-                    let frame_center_x = frame.origin.x + (frame.width/2.0)
-                    let frame_center_y = frame.origin.y + (frame.height/2.0)
-                    let distance_x = (frame_center_x - windows_center_x)
-                    let distance_y = (frame_center_y - windows_center_y)
-                    let distance = sqrt(distance_x*distance_x + distance_y*distance_y)
-                    if Float(distance) < min_distance {
-                        min_distance = Float(distance)
-                        min_index = index
-                    }
-                }
-            }
-            if min_index != -1 {
-                let frameAssignment = FrameAssignment(frame: candidateFramesMutable[min_index], window: window, focused: window.isEqual(to: focusedWindow), screenFrame: screenFrame)
-                frameAssignments.append(frameAssignment)
-                candidateFramesMutable.remove(at: min_index)
-            }
+        if configuration.windowMargins() && !disableWindowMargins {
+            ret.origin.x += padding
+            ret.origin.y += padding
+            ret.size.width -= 2 * padding
+            ret.size.height -= 2 * padding
         }
 
-        //Now assigned aligned windows that are still aligned a location
-        var alignedNoMoreWindows: [SIWindow] = []
-        for window in alignedWindows {
-            var min_distance = FLT_MAX
-            var min_index = -1
+        let windowMinimumWidth = configuration.windowMinimumWidth()
+        let windowMinimumHeight = configuration.windowMinimumHeight()
 
-            //Sometimes the windows become degenerate for some reason, ignore them
-            if !isDegenerateWindow(window:window) {
-                let window_frame = window.frame()
-                let windows_center_x = window_frame.origin.x + (window_frame.width/2.0)
-                let windows_center_y = window_frame.origin.y + (window_frame.height/2.0)
-                for (index, frame) in candidateFramesMutable.enumerated() {
-                    let frame_center_x = frame.origin.x + (frame.width/2.0)
-                    let frame_center_y = frame.origin.y + (frame.height/2.0)
-                    let distance_x = (frame_center_x - windows_center_x)
-                    let distance_y = (frame_center_y - windows_center_y)
-                    let distance = sqrt(distance_x*distance_x + distance_y*distance_y)
-                    if Float(distance) < min_distance {
-                        min_distance = Float(distance)
-                        min_index = index
-                    }
-                }
-            }
-            //If a displaced window took the frame that the previously aligned window was aligned to, then it is no longer aligned
-            if min_distance >= 1.0 {
-                alignedNoMoreWindows.append(window)
-            }
-            else {
-                let frameAssignment = FrameAssignment(frame: candidateFramesMutable[min_index], window: window, focused: window.isEqual(to: focusedWindow), screenFrame: screenFrame)
-                frameAssignments.append(frameAssignment)
-                candidateFramesMutable.remove(at: min_index)
-            }
+        if windowMinimumWidth > ret.size.width {
+            ret.origin.x -= ((windowMinimumWidth - ret.size.width) / 2)
+            ret.size.width = windowMinimumWidth
         }
 
-        //Now assigned anything that is left
-        for window in alignedNoMoreWindows {
-            var min_distance = FLT_MAX
-            var min_index = -1
-            let window_frame = window.frame()
-            //Sometimes the windows become degenerate for some reason, ignore them
-            if !isDegenerateWindow(window:window) {
-                let windows_center_x = window_frame.origin.x + (window_frame.width/2.0)
-                let windows_center_y = window_frame.origin.y + (window_frame.height/2.0)
-                for (index, frame) in candidateFramesMutable.enumerated() {
-                    let frame_center_x = frame.origin.x + (frame.width/2.0)
-                    let frame_center_y = frame.origin.y + (frame.height/2.0)
-                    let distance_x = (frame_center_x - windows_center_x)
-                    let distance_y = (frame_center_y - windows_center_y)
-                    let distance = sqrt(distance_x*distance_x + distance_y*distance_y)
-                    if Float(distance) < min_distance {
-                        min_distance = Float(distance)
-                        min_index = index
-                    }
-                }
-            }
-            if min_index != -1 {
-                let frameAssignment = FrameAssignment(frame: candidateFramesMutable[min_index], window: window, focused: window.isEqual(to: focusedWindow), screenFrame: screenFrame)
-                frameAssignments.append(frameAssignment)
-                candidateFramesMutable.remove(at: min_index)
-            }
+        if windowMinimumHeight > ret.size.height {
+            ret.origin.y -= ((windowMinimumHeight - ret.size.height) / 2)
+            ret.size.height = windowMinimumHeight
         }
 
-        performFrameAssignments(frameAssignments)
+        return ret
     }
 
-    fileprivate func assignFrame(_ frame: CGRect, toWindow window: SIWindow, focused: Bool, screenFrame: CGRect) {
-        var padding = UserConfiguration.shared.windowMarginSize()
-        var correctedFrame = frame
+    /**
+     Given a window frame and based on resizeRules, determine what the main pane ratio would be.
+     
+     This accounts for multiple main windows and primary vs non-primary being resized.
+     
+     - Parameters:
+        - windowFrame: The frame of the window to test ratio against.
+     
+     - Returns:
+     The estimate of the main pane ratio implied by how the frame would be transformed.
+     */
+    func impliedMainPaneRatio(windowFrame: CGRect) -> CGFloat {
+        let oldDimension = resizeRules.scaledDimension(frame, negatePadding: false)
+        let newDimension = resizeRules.scaledDimension(windowFrame, negatePadding: true)
+        let implied =  (newDimension / oldDimension) / resizeRules.scaleFactor
+        return resizeRules.isMain ? implied : 1 - implied
+    }
 
-        //If there is padding to do....
-        if UserConfiguration.shared.windowMargins() && padding > CGFloat(0.0) {
-            padding = floor(padding / 2)
+    /**
+     The frame shifted, if this is the focused window, so that it lies within the screen.
 
-            correctedFrame.origin.x += padding
-            correctedFrame.origin.y += padding
-            correctedFrame.size.width -= 2 * padding
-            correctedFrame.size.height -= 2 * padding
+     Applications may keep a larger size than assigned; the focused window must remain fully on screen regardless, so its origin
+     is moved to fit. This is the one rule every path that positions the focused window shares: the settle pass, the animated
+     glide, and the corrections that follow an application's actual size.
+     */
+    func keepingFocusedWindowOnScreen(_ frame: CGRect) -> CGRect {
+        guard window.isFocused else {
+            return frame
         }
-        window.setFrame(correctedFrame)
+
+        return keptOnScreen(frame)
+    }
+
+    /// The frame shifted so that it lies within the screen, whichever window it is for. The settle applies this on the window's live focus rather than the layout-time snapshot, which may be stale by the time an animation ends.
+    func keptOnScreen(_ frame: CGRect) -> CGRect {
+        var kept = frame
+        kept.origin.x = max(screenFrame.minX, min(frame.origin.x, screenFrame.maxX - frame.width))
+        kept.origin.y = max(screenFrame.minY, min(frame.origin.y, screenFrame.maxY - frame.height))
+        return kept
+    }
+
+    /// Perform the actual application of the frame to the window
+    func perform(withWindow window: Window) {
+        var finalFrame = self.finalFrame
+        var finalOrigin = finalFrame.origin
+
+        // If this is the focused window then we need to shift it to be on screen regardless of size
+        // We call this "window peeking" (this line here to aid in text search)
+        if window.isFocused() {
+            // Just resize the window first to see what the dimensions end up being
+            // Sometimes applications have internal window requirements that are not exposed to us directly
+            finalFrame.origin = window.frame().origin
+            runOnMainSync {
+                window.setFrame(finalFrame, withThreshold: CGSize(width: 1, height: 1))
+            }
+
+            // With the real height we can update the frame to account for the current size
+            finalFrame.size = CGSize(
+                width: max(window.frame().width, finalFrame.width),
+                height: max(window.frame().height, finalFrame.height)
+            )
+            finalOrigin = keptOnScreen(CGRect(origin: finalOrigin, size: finalFrame.size)).origin
+        }
+
+        // Move the window to its final frame
+        finalFrame.origin = finalOrigin
+        runOnMainSync {
+            window.setFrame(finalFrame, withThreshold: CGSize(width: 1, height: 1))
+        }
     }
 }

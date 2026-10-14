@@ -1,124 +1,219 @@
-Amethyst
-========
+# Amethyst
 
-[![Join the chat at https://gitter.im/ianyh/Amethyst](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/ianyh/Amethyst?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
-[![Build Status](https://api.travis-ci.org/ianyh/Amethyst.svg?branch=development)](https://travis-ci.org/ianyh/Amethyst)
-[![Open Source Helpers](https://www.codetriage.com/ianyh/amethyst/badges/users.svg)](https://www.codetriage.com/ianyh/amethyst)
+> **This is a modified version of [Ian Ynda-Hummel's Amethyst](https://github.com/ianyh/Amethyst).** It is maintained by Don Patterson and carries features and fixes that have been proposed upstream but are not yet part of Ian's releases. The official Amethyst, its releases and its documentation live at [ianyh/Amethyst](https://github.com/ianyh/Amethyst). Builds published on this fork's [releases page](https://github.com/djp3/Amethyst/releases) come from the `development` branch here, not from upstream, and they check that page for updates rather than Ian's feed.
+>
+> What this fork adds, with the upstream pull request for each:
+>
+> - Windows animate as they move between tiles ([#1888](https://github.com/ianyh/Amethyst/pull/1888)). Off by default: turn on `animate-windows`, and grant Screen Recording for the smoothest version on macOS 14 or later.
+> - A Tertiary Split Partition layout, key `tsp`, made for very wide and very tall screens ([#1892](https://github.com/ianyh/Amethyst/pull/1892)).
+> - Throwing a window to another screen relayouts the screen it left ([#1891](https://github.com/ianyh/Amethyst/pull/1891)).
+> - Removing a window from the Binary Space Partitioning layout keeps the rest of the tree intact ([#1890](https://github.com/ianyh/Amethyst/pull/1890)).
+> - Toggling tiling shows a Tiling Enabled or Tiling Disabled notice, and every skipped reflow is written to the system log with its reason ([#1894](https://github.com/ianyh/Amethyst/pull/1894)).
+> - An application that is slow to answer Accessibility is adopted after retries spread over about a minute, or when it next becomes active, instead of being left untiled; a window whose frame could not be read is no longer floated as if it were small; and each attempt and decision is written to the system log ([#1898](https://github.com/ianyh/Amethyst/pull/1898)).
+> - A fix for a crash when an application closes windows in quick bursts. The fix lives in the [Silica](https://github.com/djp3/Silica) fork this build depends on ([Amethyst #1889](https://github.com/ianyh/Amethyst/pull/1889), [Silica pull requests](https://github.com/ianyh/Silica/pulls?q=is%3Apr+author%3Adjp3)).
+>
+> 
 
-Tiling window manager for macOS along the lines of [xmonad](http://xmonad.org/).
+Tiling window manager for macOS along the lines of [xmonad](https://xmonad.org/).
 
-![Windows](http://ianyh.com/amethyst/images/windows.png)
+![Windows](https://ianyh.com/amethyst/images/windows.png)
 
-A quick screencast of basic functionality can be found [here](https://youtu.be/boPilhScpkY). (It's rough, and I'd love to see a better one if someone has the skills and inclination to make one.)
+If you want to learn more about tiling window managers and the features of Amethyst there are some great community resources on YouTube.
 
-Getting Amethyst
-================
+[Boost your MacOS PRODUCTIVITY with Amethyst | Tiling Window Manager](https://www.youtube.com/watch?v=7Z9-Ry4yGNc)
 
-Amethyst is available for direct download on the [releases page](https://github.com/ianyh/Amethyst/releases) or using [homebrew cask](https://github.com/caskroom/homebrew-cask).
+## Getting Amethyst
 
+Amethyst is available for direct download on the [releases page](https://github.com/ianyh/Amethyst/releases) or using [homebrew cask](https://github.com/Homebrew/homebrew-cask).
+
+## Using Amethyst
+
+Amethyst must be given permissions to use the accessibility APIs in the Privacy & Security tab, Privacy -> Accessibilty.
+
+<p align="center">
+  <img style="text-align: center; border-radius:4px;" width="500px" src="docs/images/accessibility-permission.png" alt="Give Accessibility permission to Amethyst under Privicay and Security." />
+</p>
+
+**_Important note_**: You will probably want to disable `Automatically rearrange Spaces based on most recent use` (found under Mission Control in System Preferences). This setting is enabled by default, and will cause your Spaces to swap places based on use. This makes keyboard navigation between Spaces unpredictable.
+
+<p align="center">
+  <img style="text-align: center" width="500px" src="docs/images/auto-rearranage.png" />
+</p>
+
+or run in a terminal:
+```bash
+defaults write com.apple.dock workspaces-auto-swoosh -bool NO
+killall Dock
 ```
-brew cask install amethyst
-```
 
-Note: that Amethyst now is only supported on OS X 10.12+.
+## Configuration
 
-Using Amethyst
-==============
+### Keyboard Shortcuts
 
-Amethyst must be given permissions to use the accessibility APIs under the Privacy tab of the Security & Privacy preferences pane as shown below.
+Amethyst uses two modifier combinations (`mod1` and `mod2`) and can optionally use another two (`mod3` and `mod4`).
 
-![Accessibility permissions](http://ianyh.com/amethyst/images/accessibility-window.png)
-
-Keyboard Shortcuts
-------------------
-
-Amethyst uses two modifier combinations.
-
-* `mod1` - `option + shift`
-* `mod2` - `ctrl + option + shift`
+| Default Shortcut | Description |
+|---|---|
+| `mod1` | `option + shift` |
+| `mod2` | `ctrl + option + shift` |
+| `mod3` | not defined by default |
+| `mod4` | not defined by default |
 
 And defines the following commands, mostly a mapping to xmonad key combinations.
 
-* `mod1 + space` — cycle to next layout
-* `mod2 + space` - cycle to previous layout
-* `mod1 + w` - focus 1st screen
-* `mod1 + e` - focus 2nd screen
-* `mod1 + r` - focus 3rd screen
-* `mod2 + w` - move focused window to 1st screen
-* `mod2 + e` - move focused window to 2nd screen
-* `mod2 + r` - move focused window to 3rd screen
-* `mod2 + [n]` - move focused window to nth space
-* `mod2 + left` - move focused window left one space
-* `mod2 + right` - move focused window right one space
-* `mod1 + h` - shrink the main pane
-* `mod1 + l` - expand the main pane
-* `mod1 + ,` - increase the number of windows in the main pane
-* `mod1 + .` - decrease the number of windows in the main pane
-* `mod1 + j` - focus the next window counterclockwise
-* `mod1 + k` - focus the next window clockwise
-* `mod2 + j` - move the focused window one space counterclockwise
-* `mod2 + k` - move the focused window one space clockwise
-* `mod2 + h` - move the focused window one window counterclockwise
-* `mod2 + l` - move the focused window one window clockwise
-* `mod1 + return` - swap the focused window with the main window
-* `mod1 + t` - toggle whether or not the focused window is floating
-* `mod2 + t` - toggle globally whether or not Amethyst tiles windows
-* `mod1 + i` - display the current layout for each screen
-* `mod1 + z` - force windows to be reevalulated
+| Default Shortcut | Description |
+|---|---|
+| `mod1 + space` | Cycle layout forward |
+| `mod2 + space` | Cycle layout backwards |
+| `mod1 + h` | Shrink the main pane |
+| `mod1 + l` | Expand the main pane |
+| `mod1 + ,` | Increase main pane count |
+| `mod1 + .` | Decrease main pane count |
+| `mod1 + j` | Move focus counter clockwise |
+| `mod1 + k` | Move focus clockwise |
+| `mod1 + p` | Move focus to counter clockwise screen |
+| `mod1 + n` | Move focus to clockwise screen |
+| `mod2 + h` | Swap focused window to counter clockwise screen |
+| `mod2 + l` | Swap focused window to clockwise screen |
+| `mod2 + j` | Swap focused window counter clockwise |
+| `mod2 + k` | Swap focused window clockwise |
+| `mod1 + enter` | Swap focused window with main window |
+| `mod1 + z` | Force windows to be reevaluated |
+| `mod2 + z` | Relaunch Amethyst |
+| `mod2 + left` | Throw focused window to space left |
+| `mod2 + right` | Throw focused window to space right |
+| `mod2 + 1` | Throw focused window to space 1 |
+| `mod2 + 2` | Throw focused window to space 2 |
+| `mod2 + 3` | Throw focused window to space 3 |
+| `mod2 + 4` | Throw focused window to space 4 |
+| `mod2 + 5` | Throw focused window to space 5 |
+| `mod2 + 6` | Throw focused window to space 6 |
+| `mod2 + 7` | Throw focused window to space 7 |
+| `mod2 + 8` | Throw focused window to space 8 |
+| `mod2 + 9` | Throw focused window to space 9 |
+| `mod2 + 0` | Throw focused window to space 10 |
+| `none`     | Throw focused window to space 11 |
+| `none`     | Throw focused window to space 12 |
+| `none`     | Throw focused window to space 13 |
+| `none`     | Throw focused window to space 14 |
+| `none`     | Throw focused window to space 15 |
+| `none`     | Throw focused window to space 16 |
+| `mod1 + w` | Focus Screen 1 |
+| `mod2 + w` | Throw focused window to screen 1 |
+| `mod1 + e` | Focus Screen 2 |
+| `mod2 + e` | Throw focused window to screen 2 |
+| `mod1 + r` | Focus Screen 3 |
+| `mod2 + r` | Throw focused window to screen 3 |
+| `mod1 + q` | Focus Screen 4 |
+| `mod2 + q` | Throw focused window to screen 4 |
+| `mod1 + g` | Focus Screen 5 |
+| `mod2 + g` | Throw focused window to screen 5 |
+| `mod1 + t` | Toggle float for focused window |
+| `mod1 + i` | Display current layout |
+| `mod2 + t` | Toggle global tiling |
+| `mod1 + a` | Select tall layout |
+| `none` | Select tall-right layout |
+| `mod1 + s` | Select wide layout |
+| `none` | Select middle-wide layout |
+| `mod1 + d` | Select fullscreen layout |
+| `mod1 + f` | Select column layout |
+| `none` | Select row layout |
+| `none` | Select floating layout |
+| `none` | Select widescreen-tall layout |
+| `none` | Select bsp layout |
+| `none` | Select tsp layout |
 
-Setting Up Spaces Support
--------------------------
+### Available Layouts
 
-Spaces are, unfortunately, not supported right out of the box. To enable it you
-must activate Mission Control's keyboard shortcuts for switching to specific
-Desktops, as Mac OS X calls them. This option is in the Keyboard Shortcuts tab
-of the Keyboard preferences pane. The shortcuts will be of the form `ctrl +
-[n]`. Amethyst is only able to send a window to the `n`th space if the shortcut
-`ctrl + n` is enabled.
+Amethyst allows you to cycle among several different window layouts.
+Layouts can also be enabled/disabled to control whether they appear in the cycle sequence at all.
 
-![Mission Control keyboard shortcuts](http://ianyh.com/amethyst/images/missioncontrol-shortcuts.png)
+#### Tall
 
-Amethyst currently supports sending windows to up to 10 spaces, despite macOS' limit of 16 spaces per display.
+The default layout. This gives you one "main pane" on the left, and one other pane on the right. By default, one window is placed in the main pane (extending the full height of the screen), and all remaining windows are placed in the other pane. If either pane has more than one window, that pane will be evenly split into rows, to show them all. You can use the keyboard shortcuts above to control which window(s), and how many, are in the main pane, as well as the horizontal size of the main pane vs. the other pane.
 
-_Important note_: You will probably want to disable `Automatically rearrange Spaces based on most recent use` (found under Mission Control in System Preferences). This setting is enabled by default, and will cause your Spaces to swap places based on use. This makes keyboard navigation between Spaces unpredictable.
+#### Tall-Right
 
-Contributing
-============
+Exactly the same as *Tall*, but the main pane is on the right, with the other pane on the left.
 
-If you would like to see features or particular bugs fixed check out the Trello board [here](https://trello.com/b/cCg3xhlb/amethyst) and vote on things. It'll give me a better sense of what people want so I can prioritize.
+#### Wide
 
-If you'd like to contribute please branch off of the `development` branch and open pull requests against it rather than `master`. Otherwise just try to stick to the general style of the code. There is a setup script to guide you through the process of installing necessary tools and getting dependencies built. To get started run
+The rotated version of *Tall*, where the main pane is on the _top_ (extending the full width of the screen), and the other pane is on the bottom. If either pane has more than one window, that pane will split into columns instead of rows.
 
-```bash
-$ ./bin/setup.sh
-```
+#### Two Pane
 
-Contact
-=======
+This layout has two visible panes - the main and the secondary pane. The window
+in the main pane is pinned, just like in other layouts, and all the remaining
+windows are placed in the other pane with only one window being visible at a
+time, which can be swapped (using the keyboard shortcuts). This layout
+automatically adapts to horizontal/vertical tiling depending on your screen
+orientation. The main pane is on the left in the horizontal orientation and it's
+on the top in the vertical orientation.
 
-If you have questions or feedback you have a plethora of options. You can [email me](mailto:ianynda@gmail.com), [tweet at me](https://twitter.com/ianyh), or get on [gitter](https://gitter.im/ianyh/Amethyst).
+#### Two Pane Right
 
-Donating
-========
+Exactly the same as *Two Pane*, but the main pane is on the right, with the other pane on the left.
 
-Amethyst is free and always will be. That said, a couple of people have expressed their desire to donate money in appreciation. Given the current political climate I would recommend donating to one of these organizations instead:
+#### 3Column-Left
 
-* [American Civil Liberties Union](https://www.aclu.org/)
-* [Planned Parenthood](https://www.plannedparenthood.org/)
-* [Southern Poverty Law Center](https://www.splcenter.org/)
-* [National Resources Defense Council](https://www.nrdc.org/)
-* [International Refugee Assistance Project](https://refugeerights.org/)
-* [NAACP Legal Defense Fund](http://www.naacpldf.org/)
-* [The Trevor Project](http://www.thetrevorproject.org/)
-* [Mexican American Legal Defense Fund](http://maldef.org/)
-* [ProPublica](https://www.propublica.org/)
+A three-column version of *Tall*, with one main pane on the left (extending the full height of the screen) and two other panes, one in the middle and one on the right. Like *Tall*, if any pane has more than one window, that pane will be split into rows. You can control how many windows are in the main pane as usual; other windows will be assigned as evenly as possible between the other two panes.
 
-And a bunch of technology-oriented ones:
+#### 3Column-Middle
 
-* [National Center for Women & Information Technology](https://www.ncwit.org/donate)
-* [girls who code](http://girlswhocode.com/get-involved/)
-* [MotherCoders](https://www.indiegogo.com/projects/mothercoders-a-giant-hack-for-moms-who-want-in)
-* [Trans*H4CK](http://www.transhack.org/donate/)
-* [Black Girls CODE](http://www.blackgirlscode.com/)
+Exactly like *3Column-Left*, but the main pane is in the middle, with the other panes on either side. (In previous versions of Amethyst, this layout was known as *Middle-Wide*.)
 
-Alternatively, I have a Patreon page set up [here](https://www.patreon.com/ianyh). Any proceeds will be donated to one of the above organizations. 
+#### 3Column-Right
+
+Exactly like *3Column-Left*, but the main pane is on the right, with the other panes in the middle and on the left.
+
+#### Widescreen-Tall
+
+ This mode is like *Tall*, but if there are multiple windows in the main pane,
+ the main pane splits into columns rather than rows.
+ The other pane still splits windows into rows, like *Tall*.
+ This layout gets its name because it probably makes the most sense on very
+ wide screens, with a large main pane consisting of several columns, and all
+ remaining windows stacked into the final column.
+ Other layouts that work well on very wide screens include any that allow for
+ more than two columns (to take advantage of the screen width), such as
+ any of the *3Column-&ast;* layouts, or *Column*.
+
+#### Fullscreen
+
+In this layout, the currently focused window takes up the entire screen, and the other windows are not visible at all. You can rotate between each of the windows using the "focus the next window" shortcut, as usual.
+
+#### Column
+
+This layout has one column per window, with each window extending the full height of the screen. The farthest-left window is considered the "main" window in the sense that you can change its size with the "shrink/expand the main pane" shortcuts; the other windows split the remaining space evenly.
+
+#### Row
+
+The rotated version of *Column*, where each window takes up an entire row, extending the full width of the screen.
+
+#### Floating
+
+This mode makes all windows "floating", allowing you to move and resize them as if Amethyst were temporarily deactivated. Unlike the other modes, this will mean that windows can be placed "on top of" each other, obscuring your view of some windows.
+
+#### Binary Space Partitioning (BSP)
+
+This layout does not have a main pane in the way that other layouts do. When adding windows, any given pane can be split evenly into two panes along whatever axis is longer. This is recursive such that pane A can be split in the middle into pane A on the left and pane B on the right; pane B can then be split into pane B on top and pane C on bottom; pane C can then be split into pane C on the left and pane D on the right; and so on.
+
+#### Tertiary Split Partition (TSP)
+
+Panes are divided three ways instead of two. The first window fills the screen. The second takes a third on the left, or at the top when the screen is taller than it is wide (a square screen counts as tall), and the third takes a third on the opposite side, leaving the first window in the middle. Further windows divide the side panes the same way, choosing columns or rows from the shape of each pane: the fourth window divides the second window's pane, the fifth divides the third window's, the sixth and seventh take the remaining sides of those two panes, and so on, level by level. The "shrink/expand the main pane" shortcuts change the middle pane's share of the screen, and the main pane count shortcuts move more windows into the middle pane, where they are stacked across the direction of the split.
+
+#### Custom (beta)
+
+Custom layouts can be implemented via JavaScript. See [Custom Layouts](docs/custom-layouts.md).
+
+### Configuration File
+
+Amethyst supports configuration via YAML in the home directory. See [Configuration Files](docs/configuration-files.md). Note that if configuration file is present, it will override the settings defined via the GUI.
+
+## Building Amethyst Locally
+
+If you would like to test your changes locally, Amethyst can be built using [`fastlane`](https://github.com/fastlane/fastlane). Just run the command `fastlane` in the root folder, and the app will be available at `./build/Amethyst.app`. (You may need to provision the app under "Signing & Capabilities" in XCode first.)
+
+## Contributing
+
+If you'd like to contribute please branch off of the `development` branch and open pull requests against it rather than `master`. Otherwise just try to stick to the general style of the code.

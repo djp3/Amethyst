@@ -12,6 +12,8 @@ class PreferencesWindowController: NSWindowController {
     override func awakeFromNib() {
         super.awakeFromNib()
 
+        window?.title = ""
+
         guard let firstItem = window?.toolbar?.items.first else {
             return
         }
@@ -24,17 +26,23 @@ class PreferencesWindowController: NSWindowController {
         switch sender.itemIdentifier.rawValue {
         case "general":
             contentViewController = GeneralPreferencesViewController()
+        case "layouts":
+            contentViewController = LayoutsPreferencesViewController()
         case "shortcuts":
             contentViewController = ShortcutsPreferencesViewController()
+        case "mouse":
+            contentViewController = MousePreferencesViewController()
         case "floating":
             contentViewController = FloatingPreferencesViewController()
+        case "debug":
+            contentViewController = DebugPreferencesViewController()
         default:
             break
         }
     }
 }
 
-final class PreferencesWindow: NSWindow {
+class PreferencesWindow: NSWindow {
     @IBOutlet var closeMenuItem: NSMenuItem?
 
     override func keyDown(with event: NSEvent) {

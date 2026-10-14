@@ -8,9 +8,10 @@
 
 import Cocoa
 import Foundation
-import MASShortcut
+import KeyboardShortcuts
+import Silica
 
-final class ShortcutsPreferencesViewController: NSViewController, NSTableViewDataSource, NSTableViewDelegate {
+class ShortcutsPreferencesViewController: NSViewController, NSTableViewDataSource, NSTableViewDelegate {
     private var hotKeyNameToDefaultsKey: [[String]] = []
     @IBOutlet var tableView: NSTableView?
 
@@ -22,7 +23,7 @@ final class ShortcutsPreferencesViewController: NSViewController, NSTableViewDat
     override func viewWillAppear() {
         super.viewWillAppear()
 
-        hotKeyNameToDefaultsKey = HotKeyManager.hotKeyNameToDefaultsKey()
+        hotKeyNameToDefaultsKey = HotKeyManager<SIApplication>.hotKeyNameToDefaultsKey()
         tableView?.reloadData()
     }
 
@@ -37,7 +38,7 @@ final class ShortcutsPreferencesViewController: NSViewController, NSTableViewDat
         let key = hotKeyNameToDefaultsKey[row][1]
 
         shortcutItemView.nameLabel?.stringValue = name
-        shortcutItemView.shortcutView?.associatedUserDefaultsKey = key
+        shortcutItemView.setShortcutName(name: KeyboardShortcuts.Name(key))
 
         return shortcutItemView
     }

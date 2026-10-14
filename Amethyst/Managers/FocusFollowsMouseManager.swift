@@ -11,15 +11,21 @@ import Foundation
 import Silica
 import RxSwift
 
-protocol FocusFollowsMouseManagerDelegate: class {
-    func windowsForFocusFollowsMouse() -> [SIWindow]
+protocol FocusFollowsMouseManagerDelegate: AnyObject {
+    associatedtype Window: WindowType
+    typealias Screen = Window.Screen
+    func windows(onScreen screen: Screen) -> [Window]
 }
 
-final class FocusFollowsMouseManager {
-    weak var delegate: FocusFollowsMouseManagerDelegate?
+class FocusFollowsMouseManager<Delegate: FocusFollowsMouseManagerDelegate> {
+    typealias Window = Delegate.Window
+    typealias Screen = Window.Screen
+
+    weak var delegate: Delegate?
+
+    private var lastMouseFocusTime = Date.distantPast
 
     private let userConfiguration: UserConfiguration
-
     private let disposeBag = DisposeBag()
 
     init(userConfiguration: UserConfiguration) {
@@ -31,8 +37,8 @@ final class FocusFollowsMouseManager {
             .scan(nil) { [unowned self] existingHandler, followingIsDesired -> Any? in
                 if let handler = existingHandler {
                     NSEvent.removeMonitor(handler)
-                    return nil
-                } else if followingIsDesired! {
+                }
+                if followingIsDesired == true {
                     return NSEvent.addGlobalMonitorForEvents(matching: .mouseMoved) { [unowned self] event in
                         self.focusWindowWithMouseMovedEvent(event)
                     }
@@ -46,34 +52,38 @@ final class FocusFollowsMouseManager {
 
     private func focusWindowWithMouseMovedEvent(_ event: NSEvent) {
         guard userConfiguration.focusFollowsMouse() else {
-            LogManager.log?.warning("Subscribed to mouse move events that we are ignoring")
+            log.warning("Subscribed to mouse move events that we are ignoring")
             return
         }
 
-        guard let windows = delegate?.windowsForFocusFollowsMouse() else {
+        guard let screen = Screen.availableScreens.first(where: { $0.frameIncludingDockAndMenu().contains(event.locationInWindow) }) else {
+            return
+        }
+
+        guard let windows = delegate?.windows(onScreen: screen) else {
             return
         }
 
         var mousePoint = NSPointToCGPoint(event.locationInWindow)
-        mousePoint.y = NSScreen.globalHeight() - mousePoint.y
+        mousePoint.y = Screen.globalHeight() - mousePoint.y + screen.frameIncludingDockAndMenu().origin.y
 
-        if let focusedWindow = SIWindow.focused() {
+        if let focusedWindow = Window.currentlyFocused() {
             // If the point is already in the frame of the focused window do nothing.
             guard !focusedWindow.frame().contains(mousePoint) else {
                 return
             }
         }
 
-        guard let topWindow = SIWindow.topWindowForScreenAtPoint(mousePoint, withWindows: windows) else {
+        guard let topWindow = WindowsInformation.topWindowForScreenAtPoint(mousePoint, withWindows: windows) else {
             return
         }
 
-        topWindow.am_focusWindow()
-    }
-}
+        self.lastMouseFocusTime = Date()
 
-extension WindowManager: FocusFollowsMouseManagerDelegate {
-    func windowsForFocusFollowsMouse() -> [SIWindow] {
-        return windows
+        topWindow.focus()
+    }
+
+    func recentlyTriggeredFocusFollowsMouse() -> Bool {
+        return Date().timeIntervalSince(lastMouseFocusTime) < 0.5
     }
 }

@@ -21,3 +21,9 @@ crashlytics_api_key
 crashlytics_app_key
 Carthage
 AMKeys.h
+fastlane/report.xml
+*profraw
+
+# Homebrew
+Brewfile.lock.json
+

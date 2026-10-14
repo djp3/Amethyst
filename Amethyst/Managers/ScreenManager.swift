@@ -6,170 +6,430 @@
 //  Copyright © 2015 Ian Ynda-Hummel. All rights reserved.
 //
 
+import AppKit
 import Foundation
+import os.log
 import Silica
 
-protocol ScreenManagerDelegate: class {
-    func activeWindowsForScreenManager(_ screenManager: ScreenManager) -> [SIWindow]
-    func windowIsActive(_ window: SIWindow) -> Bool
+/// Records reflow requests that were dropped before any window moved.
+private let reflowLog = OSLog(subsystem: "com.amethyst.Amethyst", category: "reflow")
+
+/// Information about a layout for display in menus
+struct LayoutMenuItemInfo {
+    let key: String
+    let name: String
+    let isSelected: Bool
 }
 
-final class ScreenManager: NSObject {
-    var screen: NSScreen
-    let screenIdentifier: String
-    fileprivate weak var delegate: ScreenManagerDelegate?
+protocol ScreenManagerDelegate: AnyObject {
+    associatedtype Window: WindowType
+    func applyWindowLimit(forScreenManager screenManager: ScreenManager<Self>, minimizingIn range: (_ windowCount: Int) -> Range<Int>)
+    func activeWindowSet(forScreenManager screenManager: ScreenManager<Self>, on screen: Window.Screen) -> WindowSet<Window>
+    func onReflowInitiation()
+    func onReflowCompletion()
+}
+
+final class ScreenManager<Delegate: ScreenManagerDelegate>: NSObject, Codable {
+    typealias Window = Delegate.Window
+    typealias Screen = Window.Screen
+
+    enum CodingKeys: String, CodingKey {
+        case layoutsBySpaceUUID
+    }
+
+    weak var delegate: Delegate?
+
+    private(set) var screen: Screen?
+    private(set) var space: Space?
+
+    /// The last window that has been focused on the screen. This value is updated by the notification observations in
+    /// `ObserveApplicationNotifications`.
+    private(set) var lastFocusedWindow: Window?
     private let userConfiguration: UserConfiguration
-    public var onReflowInitiation: (() -> Void)?
-    public var onReflowCompletion: (() -> Void)?
 
-    var currentSpaceIdentifier: String? {
-        willSet {
-            guard let spaceIdentifier = currentSpaceIdentifier else {
-                return
-            }
+    private let reflowOperationDispatchQueue = DispatchQueue(
+        label: "ScreenManager.reflowOperationQueue",
+        qos: .userInitiated,
+        attributes: [],
+        autoreleaseFrequency: .inherit,
+        target: nil
+    )
+    private let reflowOperationQueue = OperationQueue()
 
-            currentLayoutIndexBySpaceIdentifier[spaceIdentifier] = currentLayoutIndex
-        }
-        didSet {
-            defer {
-                setNeedsReflowWithWindowChange(.unknown)
-            }
-
-            guard let spaceIdentifier = currentSpaceIdentifier else {
-                return
-            }
-
-            changingSpace = true
-            currentLayoutIndex = currentLayoutIndexBySpaceIdentifier[spaceIdentifier] ?? 0
-
-            if let layouts = layoutsBySpaceIdentifier[spaceIdentifier] {
-                self.layouts = layouts
-            } else {
-                self.layouts = LayoutManager.layoutsWithConfiguration(userConfiguration, windowActivityCache: self)
-                layoutsBySpaceIdentifier[spaceIdentifier] = layouts
-            }
-        }
-    }
-    var isFullscreen = false
-
-    private var reflowTimer: Timer?
-    private var reflowOperation: ReflowOperation?
-
-    private var layouts: [Layout] = []
-    private var currentLayoutIndexBySpaceIdentifier: [String: Int] = [:]
-    private var layoutsBySpaceIdentifier: [String: [Layout]] = [:]
-    private var currentLayoutIndex: Int {
-        didSet {
-            if !self.changingSpace || userConfiguration.enablesLayoutHUDOnSpaceChange() {
-                self.displayLayoutHUD()
-            }
-        }
-    }
-    var currentLayout: Layout? {
+    private var layouts: [Layout<Window>] = []
+    private var currentLayoutIndexBySpaceUUID: [String: Int] = [:]
+    private var layoutsBySpaceUUID: [String: [Layout<Window>]] = [:]
+    private var currentLayoutIndex: Int = 0
+    var previousLayoutKey: String?
+    var currentLayout: Layout<Window>? {
         guard !layouts.isEmpty else {
             return nil
         }
         return layouts[currentLayoutIndex]
     }
 
+    /// Returns layout info for all layouts in this screen manager, including selection state
+    var layoutsInfo: [LayoutMenuItemInfo] {
+        return layouts.enumerated().map { index, layout in
+            LayoutMenuItemInfo(
+                key: layout.layoutKey,
+                name: layout.layoutName,
+                isSelected: index == currentLayoutIndex
+            )
+        }
+    }
+
     private let layoutNameWindowController: LayoutNameWindowController
 
-    private var changingSpace: Bool = false
-
-    init(screen: NSScreen, screenIdentifier: String, delegate: ScreenManagerDelegate, userConfiguration: UserConfiguration) {
+    init(screen: Screen, delegate: Delegate, userConfiguration: UserConfiguration) {
         self.screen = screen
-        self.screenIdentifier = screenIdentifier
         self.delegate = delegate
         self.userConfiguration = userConfiguration
-        self.onReflowInitiation = nil
-        self.onReflowCompletion = nil
 
-        currentLayoutIndexBySpaceIdentifier = [:]
-        layoutsBySpaceIdentifier = [:]
-        currentLayoutIndex = 0
-
-        layoutNameWindowController = LayoutNameWindowController(windowNibName: NSNib.Name(rawValue: "LayoutNameWindow"))
+        layoutNameWindowController = LayoutNameWindowController(windowNibName: "LayoutNameWindow")
 
         super.init()
 
-        layouts = LayoutManager.layoutsWithConfiguration(userConfiguration, windowActivityCache: self)
+        layouts = LayoutType.layoutsWithConfiguration(userConfiguration)
+
+        reflowOperationQueue.underlyingQueue = reflowOperationDispatchQueue
+
+        // Warm the window list the snapshot animation's backdrop needs so the first reflow does not have to wait for it.
+        if #available(macOS 14.0, *), userConfiguration.shouldAnimateWindowMovement(), ScreenCapturePermission.isGranted {
+            BackdropCapturer.shared.refresh()
+        }
     }
 
-    deinit {
-        self.onReflowCompletion = nil
-    }
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        let layoutsBySpaceUUID = try values.decode([String: [[String: Data]]].self, forKey: .layoutsBySpaceUUID)
 
-    func setNeedsReflowWithWindowChange(_ windowChange: WindowChange) {
-        reflowOperation?.cancel()
-
-        LogManager.log?.debug("Screen: \(screenIdentifier) -- Window Change: \(windowChange)")
-
-        if let statefulLayout = currentLayout as? StatefulLayout {
-            statefulLayout.updateWithChange(windowChange)
+        self.userConfiguration = UserConfiguration.shared
+        self.layoutsBySpaceUUID = try layoutsBySpaceUUID.mapValues { keyedLayouts -> [Layout<Window>] in
+            return try ScreenManager<Delegate>.decodedLayouts(from: keyedLayouts, userConfiguration: UserConfiguration.shared)
         }
 
-        if changingSpace {
-            // The 0.4 is disgustingly tied to the space change animation time.
-            // This should get burned to the ground when space changes don't rely on the mouse click trick.
-            DispatchQueue.main.asyncAfter(deadline: DispatchTime.now() + Double(Int64(UInt64(0.4) * NSEC_PER_SEC)) / Double(NSEC_PER_SEC)) {
-                self.reflow(windowChange)
+        layoutNameWindowController = LayoutNameWindowController(windowNibName: "LayoutNameWindow")
+    }
+
+    /**
+     Takes the list of layouts and inserts decoded layouts where appropriate.
+
+     - Parameters:
+        - encodedLayouts: A list of encoded layouts to be restored.
+        - userConfiguration: User configuration defining the list of layouts.
+     */
+    static func decodedLayouts(from encodedLayouts: [[String: Data]], userConfiguration: UserConfiguration) throws -> [Layout<Window>] {
+        let layouts: [Layout<Window>] = LayoutType.layoutsWithConfiguration(userConfiguration)
+        var decodedLayouts: [Layout<Window>] = encodedLayouts.compactMap { layout in
+            guard let keyData = layout["key"], let key = String(data: keyData, encoding: .utf8) else {
+                return nil
             }
+
+            guard let data = layout["data"] else {
+                return nil
+            }
+
+            do {
+                return try LayoutType<Window>.decoded(data: data, key: key)
+            } catch {
+                log.error("Failed to to decode layout: \(key)")
+            }
+
+            return nil
+        }
+
+        // Yes this is quadratic, but if your layout list is long enough for that to be significant what are you even doing?
+        return layouts.map { layout -> Layout<Window> in
+            guard let decodedLayoutIndex = decodedLayouts.firstIndex(where: { $0.layoutKey == layout.layoutKey }) else {
+                return layout
+            }
+
+            return decodedLayouts.remove(at: decodedLayoutIndex)
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var values = encoder.container(keyedBy: CodingKeys.self)
+        let layoutsBySpaceUUID = try self.layoutsBySpaceUUID.mapValues { layouts in
+            return try layouts.map { layout -> [String: Data] in
+                let layoutKey = layout.layoutKey.data(using: .utf8)!
+                let encodedLayout = try LayoutType.encoded(layout: layout)
+                return ["key": layoutKey, "data": encodedLayout]
+            }
+        }
+        try values.encode(layoutsBySpaceUUID, forKey: .layoutsBySpaceUUID)
+    }
+
+    func updateScreen(to screen: Screen) {
+        self.screen = screen
+    }
+
+    func updateSpace(to space: Space) {
+        if let currentSpace = self.space {
+            currentLayoutIndexBySpaceUUID[currentSpace.uuid] = currentLayoutIndex
+        }
+
+        self.space = space
+
+        setCurrentLayoutIndex(currentLayoutIndexBySpaceUUID[space.uuid] ?? 0, changingSpace: true)
+
+        if let layouts = layoutsBySpaceUUID[space.uuid] {
+            self.layouts = layouts
         } else {
-            DispatchQueue.main.async {
-                self.reflow(windowChange)
-            }
+            self.layouts = LayoutType.layoutsWithConfiguration(userConfiguration)
+            layoutsBySpaceUUID[space.uuid] = layouts
         }
     }
 
-    private func reflow(_ change: WindowChange) {
-        guard currentSpaceIdentifier != nil &&
-            currentLayoutIndex < layouts.count &&
-            userConfiguration.tilingEnabled &&
-            !isFullscreen &&
-            !CGSManagedDisplayIsAnimating(_CGSDefaultConnection(), screenIdentifier as CGSManagedDisplay!)
-        else {
+    func distributeEvent(_ change: Change<Window>) {
+        switch change {
+        case let .add(window: window):
+            lastFocusedWindow = window
+        case let .focusChanged(window):
+            lastFocusedWindow = window
+        case let .remove(window):
+            if lastFocusedWindow == window {
+                lastFocusedWindow = nil
+            }
+        case .windowSwap, .applicationActivate, .applicationDeactivate, .spaceChange, .layoutChange, .tabChange, .none, .unknown:
+            break
+        }
+
+        log.debug("Screen: \(screen?.screenID() ?? "unknown") reflow -- Window Change: \(change)")
+
+        guard let space, let layouts = layoutsBySpaceUUID[space.uuid] else {
+            log.warning("Trying to distribute an event to a screen with no space")
             return
         }
 
-        let windows = (delegate?.activeWindowsForScreenManager(self) ?? [])
-        changingSpace = false
-
-        let reflowOperation = currentLayout?.reflow(windows, on: screen)
-        reflowOperation?.onReflowCompletion = { [unowned self] in
-            // propagate the completion handler if we have one
-            self.onReflowCompletion?()
-        }
-        onReflowInitiation?()
-        if let reflowOperation = reflowOperation {
-            reflowOperation.enqueue(OperationQueue.main)
+        for layout in layouts {
+            if let layout = layout as? StatefulLayout {
+                layout.updateWithChange(change)
+            }
         }
     }
 
-    func updateCurrentLayout(_ updater: (Layout) -> Void) {
+    func setNeedsReflow() {
+        reflowOperationQueue.cancelAllOperations()
+
+        log.debug("Screen: \(screen?.screenID() ?? "unknown") reflow")
+
+        DispatchQueue.main.async {
+            self.minimizeWindows()
+            self.reflow()
+        }
+    }
+
+    private func minimizeWindows() {
+        let mainPaneCount = (currentLayout as? PanedLayout)?.mainPaneCount ?? 0
+
+        guard UserConfiguration.shared.tilingEnabled, let windowLimit = UserConfiguration.shared.windowMaxCount() else {
+            return
+        }
+        let shouldInsertAtFront = UserConfiguration.shared.sendNewWindowsToMainPane()
+        delegate?.applyWindowLimit(forScreenManager: self, minimizingIn: { windowCount in
+            if windowLimit > windowCount {
+                // Not enough windows to minimize.
+                return 0 ..< 0
+            }
+            if !(currentLayout is PanedLayout) {
+                // Minimize from the back, for layouts like floating/fullscreen.
+                if shouldInsertAtFront {
+                    return windowLimit ..< windowCount
+                } else {
+                    return 0 ..< windowCount - windowLimit
+                }
+            }
+            if windowLimit <= mainPaneCount {
+                // Don't minimize main panes. This allowing varying main pane count to pin windows.
+                guard windowCount >= mainPaneCount else {return 0 ..< 0}
+                return mainPaneCount ..< windowCount
+            }
+            // Minimize the oldest non-main panes.
+            if shouldInsertAtFront {
+                return windowLimit ..< windowCount
+            } else {
+                return mainPaneCount ..< windowCount + mainPaneCount - windowLimit
+            }
+        })
+    }
+
+    private func reflow() {
+        guard let screen = screen else {
+            logSkippedReflow("the screen manager has no screen")
+            return
+        }
+
+        let screenID = screen.screenID() ?? "unknown"
+
+        guard userConfiguration.tilingEnabled else {
+            logSkippedReflow("tiling is disabled", on: screenID)
+            return
+        }
+
+        guard space?.type == CGSSpaceTypeUser else {
+            logSkippedReflow("the current Space is not a user Space", on: screenID, type: .info)
+            return
+        }
+
+        // During rapid Space transitions, activation/focus notifications can arrive before
+        // this screen manager updates its tracked Space. Skip reflow if state is stale.
+        let currentSpace = CGSpacesInfo<Window>.currentSpaceForScreen(screen)
+        guard let currentSpace = currentSpace, currentSpace.id == space?.id else {
+            let tracked = space.map { String($0.id) } ?? "none"
+            let current = currentSpace.map { String($0.id) } ?? "none"
+            logSkippedReflow("the tracked Space \(tracked) is not the current Space \(current)", on: screenID)
+            return
+        }
+
+        guard let windows = delegate?.activeWindowSet(forScreenManager: self, on: screen) else {
+            logSkippedReflow("no window set is available", on: screenID)
+            return
+        }
+
+        guard let layout = currentLayout else {
+            logSkippedReflow("no layout is selected", on: screenID)
+            return
+        }
+
+        guard let frameAssignments = layout.frameAssignments(windows, on: screen) else {
+            logSkippedReflow("the \(layout.layoutName) layout produced no frame assignments", on: screenID)
+            return
+        }
+
+        // TODO: fix mff
+//        let mouseFollowsFocus = userConfiguration.mouseFollowsFocus()
+
+        let completeOperation = BlockOperation()
+
+        // The complete operation should execute the completion delegate call
+        completeOperation.addExecutionBlock { [unowned completeOperation, weak self] in
+            if completeOperation.isCancelled {
+                return
+            }
+
+            DispatchQueue.main.async {
+                self?.delegate?.onReflowCompletion()
+                // TODO: fix mff
+//                if mouseFollowsFocus {
+//                    if case .windowSwap(let window, _) = event {
+//                        window.focus()
+//                    }
+//                }
+            }
+        }
+
+        // Either animate every assignment together in one operation or apply them individually
+        let operations: [Operation]
+        if userConfiguration.shouldAnimateWindowMovement() {
+            // Smooth snapshot animation needs the private capture call and the Screen Recording permission; otherwise the real windows are moved.
+            let canSnapshot = SkyLight.isAvailable && ScreenCapturePermission.isGranted
+            if !canSnapshot && SkyLight.isAvailable {
+                // macOS is asked every launch; the hint is shown once, for long enough to read.
+                ScreenCapturePermission.requestOnce()
+                if ScreenCapturePermission.takeHintOpportunity() {
+                    displayCustomHUD(title: "Allow Screen Recording for smooth window animation", duration: ScreenCapturePermission.hintDuration)
+                }
+            }
+
+            // Windows lying within this display are captured through SkyLight; ones overhanging its edge go through ScreenCaptureKit, which returns them whole.
+            let displayBounds = WindowImageCapture.activeDisplayBounds(containing: screen.frameIncludingDockAndMenu())
+            let captureImages: (([WindowCaptureRequest]) -> [CGImage]?)? = canSnapshot
+                ? { requests in WindowImageCapture.captureImages(for: requests, displayBounds: displayBounds) }
+                : nil
+            let captureIsVerifiable: (WindowCaptureRequest) -> Bool = { request in
+                WindowImageCapture.isCaptureVerifiable(request, displayBounds: displayBounds)
+            }
+            let makeSnapshotAnimator: (() -> SnapshotAnimating)? = canSnapshot ? { ReflowAnimationOverlay() } : nil
+
+            // A backdrop lets windows re-lay out in place and their proxies dissolve into fresh captures. The capturer waits
+            // for the window list it needs if the cached one is stale, and refreshes it here for the next reflow.
+            var captureBackdrop: ((CGRect, [CGWindowID]) -> CGImage?)?
+            if canSnapshot, #available(macOS 14.0, *) {
+                let capturer = BackdropCapturer.shared
+                captureBackdrop = { screenFrame, windowIDs in capturer.captureBackdrop(screenFrame: screenFrame, excluding: windowIDs) }
+                capturer.refresh()
+            }
+
+            operations = [
+                AnimatedReflowOperation(
+                    frameAssignmentOperations: frameAssignments,
+                    duration: userConfiguration.windowAnimationDuration(),
+                    captureImages: captureImages,
+                    captureIsVerifiable: captureIsVerifiable,
+                    captureBackdrop: captureBackdrop,
+                    makeSnapshotAnimator: makeSnapshotAnimator,
+                    screenID: screen.screenID()
+                )
+            ]
+        } else {
+            operations = frameAssignments
+        }
+
+        // The completion should be dependent on all assignments finishing
+        operations.forEach { completeOperation.addDependency($0) }
+
+        // Start the operation
+        delegate?.onReflowInitiation()
+        reflowOperationQueue.addOperations(operations, waitUntilFinished: false)
+        reflowOperationQueue.addOperation(completeOperation)
+    }
+
+    /// Writes a line to the system log saying why a reflow request was dropped. Expected drops, such as a full-screen
+    /// Space being frontmost, are logged at the info level so that they stay out of the persisted log.
+    private func logSkippedReflow(_ reason: String, on screenID: String = "unknown", type: OSLogType = .default) {
+        os_log("Reflow skipped on screen %{public}@: %{public}@", log: reflowLog, type: type, screenID, reason)
+    }
+
+    func updateCurrentLayout(_ updater: (Layout<Window>) -> Void) {
         guard let layout = currentLayout else {
             return
         }
         updater(layout)
-        setNeedsReflowWithWindowChange(.unknown)
+        setNeedsReflow()
     }
 
     func cycleLayoutForward() {
-        currentLayoutIndex = (currentLayoutIndex + 1) % layouts.count
-        setNeedsReflowWithWindowChange(.unknown)
+        setCurrentLayoutIndex((currentLayoutIndex + 1) % layouts.count)
+        setNeedsReflow()
     }
 
     func cycleLayoutBackward() {
-        currentLayoutIndex = (currentLayoutIndex == 0 ? layouts.count : currentLayoutIndex) - 1
-        setNeedsReflowWithWindowChange(.unknown)
+        setCurrentLayoutIndex((currentLayoutIndex == 0 ? layouts.count : currentLayoutIndex) - 1)
+        setNeedsReflow()
     }
 
     func selectLayout(_ layoutString: String) {
-        guard let layoutIndex = layouts.index(where: { type(of: $0).layoutKey == layoutString }) else {
+        guard let currentLayoutKey = currentLayout?.layoutKey else {
             return
         }
 
-        currentLayoutIndex = layoutIndex
-        setNeedsReflowWithWindowChange(.unknown)
+        let nextLayoutKey = currentLayoutKey == layoutString ? previousLayoutKey : layoutString
+
+        guard let layoutIndex = layouts.firstIndex(where: { $0.layoutKey == nextLayoutKey }) else {
+            return
+        }
+
+        setCurrentLayoutIndex(layoutIndex)
+        setNeedsReflow()
+        previousLayoutKey = currentLayoutKey
+    }
+
+    private func setCurrentLayoutIndex(_ index: Int, changingSpace: Bool = false) {
+        guard (0..<layouts.count).contains(index) else {
+            return
+        }
+
+        currentLayoutIndex = index
+
+        guard !changingSpace || userConfiguration.enablesLayoutHUDOnSpaceChange() else {
+            return
+        }
+
+        DispatchQueue.main.async {
+            self.displayLayoutHUD()
+        }
     }
 
     func shrinkMainPane() {
@@ -186,15 +446,15 @@ final class ScreenManager: NSObject {
         panedLayout.expandMainPane()
     }
 
-    func nextWindowIDCounterClockwise() -> CGWindowID? {
-        guard let statefulLayout = currentLayout as? StatefulLayout else {
+    func nextWindowIDCounterClockwise() -> Window.WindowID? {
+        guard let layout = currentLayout as? StatefulLayout else {
             return nil
         }
 
-        return statefulLayout.nextWindowIDCounterClockwise()
+        return layout.nextWindowIDCounterClockwise()
     }
 
-    func nextWindowIDClockwise() -> CGWindowID? {
+    func nextWindowIDClockwise() -> Window.WindowID? {
         guard let statefulLayout = currentLayout as? StatefulLayout else {
             return nil
         }
@@ -202,46 +462,87 @@ final class ScreenManager: NSObject {
         return statefulLayout.nextWindowIDClockwise()
     }
 
+    /// The title and description the layout HUD shows. While tiling is disabled the title says so and the layout name
+    /// moves to the description, since the layout is not being applied.
+    func layoutHUDContent() -> (title: String, description: String) {
+        let currentLayoutName = currentLayout.flatMap({ $0.layoutName }) ?? "None"
+
+        guard userConfiguration.tilingEnabled else {
+            return ("Tiling Disabled", currentLayoutName)
+        }
+
+        return (currentLayoutName, currentLayout?.layoutDescription ?? "")
+    }
+
     func displayLayoutHUD() {
+        guard userConfiguration.enablesLayoutHUD(), space?.type == CGSSpaceTypeUser else {
+            return
+        }
+
+        let content = layoutHUDContent()
+        displayCustomHUD(title: content.title, description: content.description)
+    }
+
+    /// Shows whether tiling is enabled or disabled, following the same preference as the layout HUD. The HUD window is
+    /// created and shown on the main thread, whichever thread toggled tiling.
+    func displayTilingStateHUD() {
         guard userConfiguration.enablesLayoutHUD() else {
+            return
+        }
+
+        let title = userConfiguration.tilingEnabled ? "Tiling Enabled" : "Tiling Disabled"
+        DispatchQueue.main.async {
+            self.displayCustomHUD(title: title)
+        }
+    }
+
+    @objc func hideLayoutHUD(_ sender: AnyObject) {
+        layoutNameWindowController.close()
+    }
+
+    func displayCustomHUD(title: String, description: String = "", duration: TimeInterval = 0.6) {
+        guard let screen = screen else {
+            return
+        }
+
+        guard space?.type == CGSSpaceTypeUser else {
             return
         }
 
         defer {
             NSObject.cancelPreviousPerformRequests(withTarget: self, selector: #selector(hideLayoutHUD(_:)), object: nil)
-            perform(#selector(hideLayoutHUD(_:)), with: nil, afterDelay: 0.6)
+            perform(#selector(hideLayoutHUD(_:)), with: nil, afterDelay: duration)
         }
 
         guard let layoutNameWindow = layoutNameWindowController.window as? LayoutNameWindow else {
             return
         }
 
-        let screenFrame = screen.frame
+        // Use new displayNotification method with dynamic sizing
+        layoutNameWindow.displayNotification(title: title, description: description)
+
+        // Center the window after resizing
+        let screenFrame = screen.frame()
         let screenCenter = CGPoint(x: screenFrame.midX, y: screenFrame.midY)
         let windowOrigin = CGPoint(
             x: screenCenter.x - layoutNameWindow.frame.width / 2.0,
             y: screenCenter.y - layoutNameWindow.frame.height / 2.0
         )
-
-        layoutNameWindow.layoutNameField?.stringValue = currentLayout.flatMap({ type(of: $0).layoutName }) ?? "None"
         layoutNameWindow.setFrameOrigin(NSPointFromCGPoint(windowOrigin))
 
         layoutNameWindowController.showWindow(self)
     }
-
-    @objc func hideLayoutHUD(_ sender: AnyObject) {
-        layoutNameWindowController.close()
-    }
 }
 
-extension ScreenManager: WindowActivityCache {
-    func windowIsActive(_ window: SIWindow) -> Bool {
-        return delegate?.windowIsActive(window) ?? false
-    }
-}
+extension ScreenManager: Comparable {
+    static func < (lhs: ScreenManager<Delegate>, rhs: ScreenManager<Delegate>) -> Bool {
+        guard let lhsScreen = lhs.screen, let rhsScreen = rhs.screen else {
+            return false
+        }
 
-extension WindowManager: ScreenManagerDelegate {
-    func activeWindowsForScreenManager(_ screenManager: ScreenManager) -> [SIWindow] {
-        return activeWindows(on: screenManager.screen)
+        let originX1 = lhsScreen.frameWithoutDockOrMenu().origin.x
+        let originX2 = rhsScreen.frameWithoutDockOrMenu().origin.x
+
+        return originX1 < originX2
     }
 }
