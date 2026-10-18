@@ -1176,6 +1176,11 @@ extension WindowManager: WindowTransitionTarget {
             return
         }
 
+        // A window an animation is moving belongs to the screen animating it; its move notifications are not a drag.
+        guard !AnimatingWindows.shared.isAnimating(window.cgID()) else {
+            return
+        }
+
         guard NSEvent.pressedMouseButtons == 0 else {
             let id = window.id()
             guard !pendingHandOvers.contains(id) else {
