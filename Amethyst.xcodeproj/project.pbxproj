@@ -59,6 +59,7 @@
 		403E1A2C233719E500DB7B2A /* TallLayoutTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 403E1A2B233719E500DB7B2A /* TallLayoutTests.swift */; };
 		DA1A0004AE0B000000000004 /* AnimatedReflowOperationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA1A0003AE0B000000000003 /* AnimatedReflowOperationTests.swift */; };
 		DA1A000BAE0B00000000000B /* EnhancedUserInterfaceSuppressionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA1A000CAE0B00000000000C /* EnhancedUserInterfaceSuppressionTests.swift */; };
+		DE5C0A5400000000000000D4 /* TspCustomLayoutTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE5C0A5300000000000000D3 /* TspCustomLayoutTests.swift */; };
 		4045416F268FFDA000861BE8 /* CustomLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4045416E268FFDA000861BE8 /* CustomLayout.swift */; };
 		404541712697C14A00861BE8 /* CustomLayoutTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 404541702697C14A00861BE8 /* CustomLayoutTests.swift */; };
 		404541742697C22A00861BE8 /* null.js in Resources */ = {isa = PBXBuildFile; fileRef = 404541732697C22A00861BE8 /* null.js */; };
@@ -137,6 +138,7 @@
 		40DA8B6E27D5AA7300C291AF /* subset.js in Resources */ = {isa = PBXBuildFile; fileRef = 40DA8B6D27D5AA7300C291AF /* subset.js */; };
 		40E2D2302D544F1E00D16B87 /* Silica in Frameworks */ = {isa = PBXBuildFile; productRef = 40E2D22F2D544F1E00D16B87 /* Silica */; };
 		40E705D8176EAD7800850DA6 /* default.amethyst in Resources */ = {isa = PBXBuildFile; fileRef = 40E705D7176EAD7800850DA6 /* default.amethyst */; };
+		DE5C0A5200000000000000D2 /* Layouts in Resources */ = {isa = PBXBuildFile; fileRef = DE5C0A5100000000000000D1 /* Layouts */; };
 		40EC47F423F3A30100048B4F /* ScreenManagerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40EC47F323F3A30100048B4F /* ScreenManagerTests.swift */; };
 		40EFFB4A2F0226EF00EDD929 /* Silica in Frameworks */ = {isa = PBXBuildFile; productRef = 40EFFB492F0226EF00EDD929 /* Silica */; };
 		4493EAA22139D9F000AA9623 /* ThreeColumnLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4493EAA12139D9EF00AA9623 /* ThreeColumnLayout.swift */; };
@@ -209,6 +211,7 @@
 		403E1A2B233719E500DB7B2A /* TallLayoutTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TallLayoutTests.swift; sourceTree = "<group>"; };
 		DA1A0003AE0B000000000003 /* AnimatedReflowOperationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnimatedReflowOperationTests.swift; sourceTree = "<group>"; };
 		DA1A000CAE0B00000000000C /* EnhancedUserInterfaceSuppressionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EnhancedUserInterfaceSuppressionTests.swift; sourceTree = "<group>"; };
+		DE5C0A5300000000000000D3 /* TspCustomLayoutTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TspCustomLayoutTests.swift; sourceTree = "<group>"; };
 		4045416E268FFDA000861BE8 /* CustomLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CustomLayout.swift; sourceTree = "<group>"; };
 		404541702697C14A00861BE8 /* CustomLayoutTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CustomLayoutTests.swift; sourceTree = "<group>"; };
 		404541732697C22A00861BE8 /* null.js */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.javascript; path = null.js; sourceTree = "<group>"; };
@@ -282,6 +285,7 @@
 		40D95B4B1C6E2ED800AAF433 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		40DA8B6D27D5AA7300C291AF /* subset.js */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.javascript; path = subset.js; sourceTree = "<group>"; };
 		40E705D7176EAD7800850DA6 /* default.amethyst */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = default.amethyst; sourceTree = "<group>"; };
+		DE5C0A5100000000000000D1 /* Layouts */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Layouts; sourceTree = "<group>"; };
 		40EC47F323F3A30100048B4F /* ScreenManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenManagerTests.swift; sourceTree = "<group>"; };
 		4493EAA12139D9EF00AA9623 /* ThreeColumnLayout.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = ThreeColumnLayout.swift; sourceTree = "<group>"; };
 		DE5C0A012E8B1C0000A1B2C3 /* TertiarySplitPartitionLayout.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = TertiarySplitPartitionLayout.swift; sourceTree = "<group>"; };
@@ -495,6 +499,7 @@
 				402DB6EA1742E41A00D1C936 /* InfoPlist.strings */,
 				402DB6F01742E41A00D1C936 /* Credits.rtf */,
 				40E705D7176EAD7800850DA6 /* default.amethyst */,
+				DE5C0A5100000000000000D1 /* Layouts */,
 				40A87FDB2404AEAD005EE9C6 /* main.swift */,
 			);
 			name = "Supporting Files";
@@ -547,6 +552,7 @@
 				40D491D723367590007E0CCB /* RowLayoutTests.swift */,
 				403E1A2B233719E500DB7B2A /* TallLayoutTests.swift */,
 				DA1A0003AE0B000000000003 /* AnimatedReflowOperationTests.swift */,
+				DE5C0A5300000000000000D3 /* TspCustomLayoutTests.swift */,
 				40AB5BE823AB0A2B00E29346 /* TallRightLayoutTests.swift */,
 				40AB5BEC23AC3CF800E29346 /* ThreeColumnLayoutTests.swift */,
 				DE5C0A032E8B1C0000A1B2C3 /* TertiarySplitPartitionLayoutTests.swift */,
@@ -800,6 +806,7 @@
 				40B3927C1814967F009A296B /* LayoutNameWindow.xib in Resources */,
 				40AF71DE20BB401400F58EA9 /* FloatingPreferencesViewController.xib in Resources */,
 				40E705D8176EAD7800850DA6 /* default.amethyst in Resources */,
+				DE5C0A5200000000000000D2 /* Layouts in Resources */,
 				40A88005240C40D0005EE9C6 /* LayoutsPreferencesViewController.xib in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -936,6 +943,7 @@
 				403E1A2C233719E500DB7B2A /* TallLayoutTests.swift in Sources */,
 				DA1A0004AE0B000000000004 /* AnimatedReflowOperationTests.swift in Sources */,
 				DA1A000BAE0B00000000000B /* EnhancedUserInterfaceSuppressionTests.swift in Sources */,
+				DE5C0A5400000000000000D4 /* TspCustomLayoutTests.swift in Sources */,
 				404541712697C14A00861BE8 /* CustomLayoutTests.swift in Sources */,
 				4000DB10239CA07000365A0C /* WideLayoutTests.swift in Sources */,
 				40AB5BEB23AB182300E29346 /* WidescreenTallLayoutTests.swift in Sources */,
