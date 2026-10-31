@@ -70,6 +70,7 @@
 		DE5C0A4200000000000000C2 /* scale-factor.js in Resources */ = {isa = PBXBuildFile; fileRef = DE5C0A4100000000000000C1 /* scale-factor.js */; };
 		DE5C0A4400000000000000C4 /* resize-step-commands.js in Resources */ = {isa = PBXBuildFile; fileRef = DE5C0A4300000000000000C3 /* resize-step-commands.js */; };
 		DE5C0A4600000000000000C6 /* LayoutDirectoriesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE5C0A4500000000000000C5 /* LayoutDirectoriesTests.swift */; };
+		DE5C0A6200000000000000E2 /* HandOverOutcomeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE5C0A6100000000000000E1 /* HandOverOutcomeTests.swift */; };
 		4045417E2698030A00861BE8 /* static-ratio-tall.js in Resources */ = {isa = PBXBuildFile; fileRef = 4045417D2698030A00861BE8 /* static-ratio-tall.js */; };
 		4046EFCF2236019400113067 /* Window.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4046EFCE2236019400113067 /* Window.swift */; };
 		4046EFD12238949900113067 /* Application.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4046EFD02238949900113067 /* Application.swift */; };
@@ -222,6 +223,7 @@
 		DE5C0A4100000000000000C1 /* scale-factor.js */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.javascript; path = "scale-factor.js"; sourceTree = "<group>"; };
 		DE5C0A4300000000000000C3 /* resize-step-commands.js */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.javascript; path = "resize-step-commands.js"; sourceTree = "<group>"; };
 		DE5C0A4500000000000000C5 /* LayoutDirectoriesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LayoutDirectoriesTests.swift; sourceTree = "<group>"; };
+		DE5C0A6100000000000000E1 /* HandOverOutcomeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HandOverOutcomeTests.swift; sourceTree = "<group>"; };
 		4045417D2698030A00861BE8 /* static-ratio-tall.js */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.javascript; path = "static-ratio-tall.js"; sourceTree = "<group>"; };
 		4046EFCE2236019400113067 /* Window.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Window.swift; sourceTree = "<group>"; };
 		4046EFD02238949900113067 /* Application.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Application.swift; sourceTree = "<group>"; };
@@ -569,6 +571,7 @@
 				4085824B1EA673AE0075A2C3 /* HotKeyManagerTests.swift */,
 				DE5C0A2300000000000000A3 /* ApplicationAdoptionTests.swift */,
 				DE5C0A4500000000000000C5 /* LayoutDirectoriesTests.swift */,
+				DE5C0A6100000000000000E1 /* HandOverOutcomeTests.swift */,
 				40EC47F323F3A30100048B4F /* ScreenManagerTests.swift */,
 			);
 			path = Managers;
@@ -935,6 +938,7 @@
 				DE5C0A2400000000000000A4 /* ApplicationAdoptionTests.swift in Sources */,
 				DE5C0A3200000000000000B2 /* CGSpacesInfoTests.swift in Sources */,
 				DE5C0A4600000000000000C6 /* LayoutDirectoriesTests.swift in Sources */,
+				DE5C0A6200000000000000E2 /* HandOverOutcomeTests.swift in Sources */,
 				40578C1B232DC607006553A0 /* TestScreen.swift in Sources */,
 				40B0D145232D2E630021E0A7 /* FullscreenLayoutTests.swift in Sources */,
 				404541762697C62400861BE8 /* TestBundle.swift in Sources */,
