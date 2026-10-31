@@ -143,6 +143,8 @@
 		DE5C0A5200000000000000D2 /* Layouts in Resources */ = {isa = PBXBuildFile; fileRef = DE5C0A5100000000000000D1 /* Layouts */; };
 		40EC47F423F3A30100048B4F /* ScreenManagerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40EC47F323F3A30100048B4F /* ScreenManagerTests.swift */; };
 		DE5C0A6400000000000000E4 /* HeldReflowsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE5C0A6300000000000000E3 /* HeldReflowsTests.swift */; };
+		DE5C0A6600000000000000E6 /* SystemLogDestinationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE5C0A6500000000000000E5 /* SystemLogDestinationTests.swift */; };
+		DE5C0A6800000000000000E8 /* DiagnosticLoggingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE5C0A6700000000000000E7 /* DiagnosticLoggingTests.swift */; };
 		40EFFB4A2F0226EF00EDD929 /* Silica in Frameworks */ = {isa = PBXBuildFile; productRef = 40EFFB492F0226EF00EDD929 /* Silica */; };
 		4493EAA22139D9F000AA9623 /* ThreeColumnLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4493EAA12139D9EF00AA9623 /* ThreeColumnLayout.swift */; };
 		DE5C0A022E8B1C0000A1B2C3 /* TertiarySplitPartitionLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE5C0A012E8B1C0000A1B2C3 /* TertiarySplitPartitionLayout.swift */; };
@@ -293,6 +295,8 @@
 		DE5C0A5100000000000000D1 /* Layouts */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Layouts; sourceTree = "<group>"; };
 		40EC47F323F3A30100048B4F /* ScreenManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenManagerTests.swift; sourceTree = "<group>"; };
 		DE5C0A6300000000000000E3 /* HeldReflowsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HeldReflowsTests.swift; sourceTree = "<group>"; };
+		DE5C0A6500000000000000E5 /* SystemLogDestinationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemLogDestinationTests.swift; sourceTree = "<group>"; };
+		DE5C0A6700000000000000E7 /* DiagnosticLoggingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiagnosticLoggingTests.swift; sourceTree = "<group>"; };
 		4493EAA12139D9EF00AA9623 /* ThreeColumnLayout.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = ThreeColumnLayout.swift; sourceTree = "<group>"; };
 		DE5C0A012E8B1C0000A1B2C3 /* TertiarySplitPartitionLayout.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = TertiarySplitPartitionLayout.swift; sourceTree = "<group>"; };
 		AA4AF40C26717DA900D2AE1B /* TwoPaneLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TwoPaneLayout.swift; sourceTree = "<group>"; };
@@ -579,6 +583,8 @@
 				DE5C0A6100000000000000E1 /* HandOverOutcomeTests.swift */,
 				40EC47F323F3A30100048B4F /* ScreenManagerTests.swift */,
 				DE5C0A6300000000000000E3 /* HeldReflowsTests.swift */,
+				DE5C0A6500000000000000E5 /* SystemLogDestinationTests.swift */,
+				DE5C0A6700000000000000E7 /* DiagnosticLoggingTests.swift */,
 			);
 			path = Managers;
 			sourceTree = "<group>";
@@ -960,6 +966,8 @@
 				40AB5BEB23AB182300E29346 /* WidescreenTallLayoutTests.swift in Sources */,
 				40EC47F423F3A30100048B4F /* ScreenManagerTests.swift in Sources */,
 				DE5C0A6400000000000000E4 /* HeldReflowsTests.swift in Sources */,
+				DE5C0A6600000000000000E6 /* SystemLogDestinationTests.swift in Sources */,
+				DE5C0A6800000000000000E8 /* DiagnosticLoggingTests.swift in Sources */,
 				40D491DB23367630007E0CCB /* FrameAssignmentVerification.swift in Sources */,
 				40AB5BED23AC3CF800E29346 /* ThreeColumnLayoutTests.swift in Sources */,
 				DE5C0A042E8B1C0000A1B2C3 /* TertiarySplitPartitionLayoutTests.swift in Sources */,
