@@ -82,6 +82,7 @@ final class WindowManager<Application: ApplicationType>: NSObject, Codable {
     private var earlyFocusedWindows: Set<Window.WindowID> = []
     private var eventQueue: [PendingEvent] = []
     private var pendingHandOvers: Set<Window.WindowID> = []
+    private var heldReflows = HeldReflows()
 
     private lazy var mouseStateKeeper = MouseStateKeeper(delegate: self)
     private lazy var applicationEventHandler = ApplicationEventHandler(delegate: self)
@@ -149,7 +150,7 @@ final class WindowManager<Application: ApplicationType>: NSObject, Codable {
         guard let focusedWindow = Window.currentlyFocused(), let screen = focusedWindow.screen() else {
             return
         }
-        markScreenForReflow(screen)
+        markScreenForReflowOnceMouseIsUp(screen)
 //        doMouseFollowsFocus(focusedWindow: focusedWindow)
     }
 
@@ -415,6 +416,15 @@ extension WindowManager {
 
     func markScreenForReflow(_ screen: Screen) {
         screens.markScreenForReflow(screen)
+    }
+
+    /// Reflows the screen now, or once the left mouse button comes up while it is down, so that a window being dragged keeps following the mouse.
+    private func markScreenForReflowOnceMouseIsUp(_ screen: Screen) {
+        guard NSEvent.pressedMouseButtons & 1 == 1, let screenID = screen.screenID() else {
+            markScreenForReflow(screen)
+            return
+        }
+        heldReflows.hold(screenID)
     }
 
     func markAllScreensForReflow() {
@@ -883,6 +893,14 @@ extension WindowManager: MouseStateKeeperDelegate {
         }
     }
 
+    func didReleaseLeftMouseButton() {
+        for screenID in heldReflows.release() {
+            if let screen = screen(withID: screenID) {
+                markScreenForReflow(screen)
+            }
+        }
+    }
+
     func swapDraggedWindowWithDropzone(_ draggedWindow: Window) {
         handOverIfMoved(draggedWindow)
 
@@ -931,7 +949,7 @@ extension WindowManager: ApplicationObservationDelegate {
         } else if windows.isWindowTracked(window) {
             refreshTrackedWindow(window, application: application)
             distributeEventToScreen(screen, change: .focusChanged(window: window))
-            markScreenForReflow(screen)
+            markScreenForReflowOnceMouseIsUp(screen)
         } else {
             // Focus notification arrived before the creation notification.
             // Record this so swapInTab can call completeTabDetection immediately
@@ -1074,7 +1092,29 @@ extension WindowManager {
     }
 }
 
-// MARK: Drag hand-over
+// MARK: Mouse drags
+
+/// The screens whose reflow waits for the left mouse button to come up, each at most once.
+struct HeldReflows {
+    private var screenIDs: [String] = []
+
+    var isEmpty: Bool {
+        return screenIDs.isEmpty
+    }
+
+    /// Adds the screen unless it is already waiting.
+    mutating func hold(_ screenID: String) {
+        if !screenIDs.contains(screenID) {
+            screenIDs.append(screenID)
+        }
+    }
+
+    /// Empties the hold and returns the screens in the order they were first held.
+    mutating func release() -> [String] {
+        defer { screenIDs.removeAll() }
+        return screenIDs
+    }
+}
 
 /// What a move notification for a tracked, tiled window calls for.
 enum HandOverOutcome: Equatable {
