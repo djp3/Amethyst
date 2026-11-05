@@ -9,7 +9,6 @@
 import AppKit
 import Carbon
 import Foundation
-import os.log
 import RxSwift
 import Silica
 import SwiftyJSON
@@ -82,6 +81,7 @@ final class WindowManager<Application: ApplicationType>: NSObject, Codable {
     private var earlyFocusedWindows: Set<Window.WindowID> = []
     private var eventQueue: [PendingEvent] = []
     private var pendingHandOvers: Set<Window.WindowID> = []
+    private var heldReflows = HeldReflows()
 
     private lazy var mouseStateKeeper = MouseStateKeeper(delegate: self)
     private lazy var applicationEventHandler = ApplicationEventHandler(delegate: self)
@@ -149,7 +149,7 @@ final class WindowManager<Application: ApplicationType>: NSObject, Codable {
         guard let focusedWindow = Window.currentlyFocused(), let screen = focusedWindow.screen() else {
             return
         }
-        markScreenForReflow(screen)
+        markScreenForReflowOnceMouseIsUp(screen)
 //        doMouseFollowsFocus(focusedWindow: focusedWindow)
     }
 
@@ -182,7 +182,7 @@ final class WindowManager<Application: ApplicationType>: NSObject, Codable {
             return
         }
 
-        os_log("Adopting %{public}@ (pid %d) on activation", log: applicationLog, type: .default, activatedApplication.localizedName ?? "<unknown>", pid)
+        log.info("Adopting \(activatedApplication.localizedName ?? "<unknown>") (pid \(pid)) on activation")
         add(runningApplication: activatedApplication)
     }
 
@@ -417,6 +417,16 @@ extension WindowManager {
         screens.markScreenForReflow(screen)
     }
 
+    /// Reflows the screen now, or once the left mouse button comes up while it is down, so that a window being dragged keeps following the mouse.
+    private func markScreenForReflowOnceMouseIsUp(_ screen: Screen) {
+        guard NSEvent.pressedMouseButtons & 1 == 1, let screenID = screen.screenID() else {
+            markScreenForReflow(screen)
+            return
+        }
+        log.debug("Holding the reflow of screen \(screenID) until the mouse button is up")
+        heldReflows.hold(screenID)
+    }
+
     func markAllScreensForReflow() {
         screens.markAllScreensForReflow()
     }
@@ -542,7 +552,7 @@ extension WindowManager {
         guard let application = applicationWithPID(window.pid()) else {
             log.error("Tried to add a window without an application: \(window)")
             let applicationName = NSRunningApplication(processIdentifier: window.pid())?.localizedName ?? "<unknown>"
-            os_log("A window of %{public}@ (pid %d) has no adopted application", log: applicationLog, type: .error, applicationName, window.pid())
+            log.error("A window of \(applicationName) (pid \(window.pid())) has no adopted application")
             return
         }
 
@@ -591,7 +601,7 @@ extension WindowManager {
             .subscribe(
                 onError: { error in
                     let applicationName = application.title() ?? "<unknown>"
-                    os_log("Could not track a window of %{public}@ (pid %d): %{public}@", log: applicationLog, type: .error, applicationName, window.pid(), "\(error)")
+                    log.error("Could not track a window of \(applicationName) (pid \(window.pid())): \(error)")
                     log.error("Failed to track window: \(window) - \(error)")
                 }
             )
@@ -639,7 +649,7 @@ extension WindowManager {
         case .reliable(.floating), .unreliable(.floating):
             let frame = window.frame()
             let size = frame.isNull ? "unknown" : "\(Int(frame.width))x\(Int(frame.height))"
-            os_log("Floating a window of %{public}@ (pid %d) by default, size %{public}@", log: applicationLog, type: .default, application.title() ?? "<unknown>", window.pid(), size)
+            log.info("Floating a window of \(application.title() ?? "<unknown>") (pid \(window.pid())) by default, size \(size)")
             windows.setFloating(true, forWindow: window)
         case .reliable(.notFloating), .unreliable(.notFloating):
             windows.setFloating(false, forWindow: window)
@@ -883,6 +893,18 @@ extension WindowManager: MouseStateKeeperDelegate {
         }
     }
 
+    func didReleaseLeftMouseButton() {
+        let screenIDs = heldReflows.release()
+        if !screenIDs.isEmpty {
+            log.debug("Mouse button up: reflowing the held screens \(screenIDs)")
+        }
+        for screenID in screenIDs {
+            if let screen = screen(withID: screenID) {
+                markScreenForReflow(screen)
+            }
+        }
+    }
+
     func swapDraggedWindowWithDropzone(_ draggedWindow: Window) {
         handOverIfMoved(draggedWindow)
 
@@ -891,13 +913,12 @@ extension WindowManager: MouseStateKeeperDelegate {
         let windows = activeWindows(on: screen)
 
         // need to flip mouse coordinate system to fit Amethyst https://stackoverflow.com/a/45289010/2063546
-        let flippedPointerLocation = NSPointToCGPoint(NSEvent.mouseLocation)
-        let unflippedY = Screen.globalHeight() - flippedPointerLocation.y + screen.frameIncludingDockAndMenu().origin.y
-        let pointerLocation = NSPointToCGPoint(NSPoint(x: flippedPointerLocation.x, y: unflippedY))
+        let pointerLocation = Screen.convertFromCocoa(NSPointToCGPoint(NSEvent.mouseLocation))
 
         if let screenManager: ScreenManager<WindowManager<Application>> = focusedScreenManager(), let layout = screenManager.currentLayout {
             let windowSet = self.windows.windowSet(forActiveWindowsOnScreen: screen)
             if let layoutWindow = layout.windowAtPoint(pointerLocation, of: windowSet, on: screen), let framedWindow = self.windows.window(withID: layoutWindow.id) {
+                log.debug("Dropped \(draggedWindow) on \(framedWindow): swapping them")
                 executeTransition(.switchWindows(draggedWindow, framedWindow))
                 return
             }
@@ -905,8 +926,10 @@ extension WindowManager: MouseStateKeeperDelegate {
 
         // Ignore if there is no window at that point
         guard let secondWindow = WindowsInformation.alternateWindowForScreenAtPoint(pointerLocation, withWindows: windows, butNot: draggedWindow) else {
+            log.debug("Dropped \(draggedWindow) on no window: leaving it where it is")
             return
         }
+        log.debug("Dropped \(draggedWindow) near \(secondWindow): swapping them")
         executeTransition(.switchWindows(draggedWindow, secondWindow))
     }
 }
@@ -933,7 +956,7 @@ extension WindowManager: ApplicationObservationDelegate {
         } else if windows.isWindowTracked(window) {
             refreshTrackedWindow(window, application: application)
             distributeEventToScreen(screen, change: .focusChanged(window: window))
-            markScreenForReflow(screen)
+            markScreenForReflowOnceMouseIsUp(screen)
         } else {
             // Focus notification arrived before the creation notification.
             // Record this so swapInTab can call completeTabDetection immediately
@@ -1076,6 +1099,56 @@ extension WindowManager {
     }
 }
 
+// MARK: Mouse drags
+
+/// The screens whose reflow waits for the left mouse button to come up, each at most once.
+struct HeldReflows {
+    private var screenIDs: [String] = []
+
+    var isEmpty: Bool {
+        return screenIDs.isEmpty
+    }
+
+    /// Adds the screen unless it is already waiting.
+    mutating func hold(_ screenID: String) {
+        if !screenIDs.contains(screenID) {
+            screenIDs.append(screenID)
+        }
+    }
+
+    /// Empties the hold and returns the screens in the order they were first held.
+    mutating func release() -> [String] {
+        defer { screenIDs.removeAll() }
+        return screenIDs
+    }
+}
+
+/// What a move notification for a tracked, tiled window calls for.
+enum HandOverOutcome: Equatable {
+    /// The window is still in the user's hand or in an animation's; it is checked again once it is free.
+    case checkAgain
+    /// The window lies on the screen whose layout holds it, or on no screen that can be named.
+    case stay
+    /// The window lies on another screen than the one whose layout holds it.
+    case move(fromScreen: String, toScreen: String)
+
+    /// Decides what a move notification calls for. The screen lookups run only for a window that is free, so a window being dragged or animated costs no frame read.
+    static func decide(
+        mouseButtonsArePressed: Bool,
+        isAnimating: Bool,
+        currentScreenID: () -> String?,
+        previousScreenID: () -> String?
+    ) -> HandOverOutcome {
+        guard !mouseButtonsArePressed, !isAnimating else {
+            return .checkAgain
+        }
+        guard let current = currentScreenID(), let previous = previousScreenID(), previous != current else {
+            return .stay
+        }
+        return .move(fromScreen: previous, toScreen: current)
+    }
+}
+
 // MARK: Window Transition
 extension WindowManager: WindowTransitionTarget {
     /**
@@ -1169,50 +1242,67 @@ extension WindowManager: WindowTransitionTarget {
     /**
      Hands a window over to the screen it now lies on when that is not the screen whose layout holds it, the way a throw does: the old screen drops it, the new screen takes it, and both reflow.
 
-     A window still being dragged is left where the user has it; the check runs again once the mouse button is up.
+     A window still in the user's hand, or one an animation is moving, is left where it is; the check runs again a quarter of a second later, and keeps doing so until the window is free.
      */
     private func handOverIfMoved(_ window: Window) {
         guard windows.isWindowTracked(window), !windows.isWindowFloating(window) else {
             return
         }
 
-        // A window an animation is moving belongs to the screen animating it; its move notifications are not a drag.
-        guard !AnimatingWindows.shared.isAnimating(window.cgID()) else {
-            return
-        }
-
-        guard NSEvent.pressedMouseButtons == 0 else {
-            let id = window.id()
-            guard !pendingHandOvers.contains(id) else {
-                return
+        let mouseButtonsArePressed = NSEvent.pressedMouseButtons != 0
+        let isAnimating = AnimatingWindows.shared.isAnimating(window.cgID())
+        var screenIDNow: String?
+        var screenIDBefore: String?
+        let outcome = HandOverOutcome.decide(
+            mouseButtonsArePressed: mouseButtonsArePressed,
+            isAnimating: isAnimating,
+            currentScreenID: {
+                screenIDNow = window.screen()?.screenID()
+                return screenIDNow
+            },
+            previousScreenID: {
+                screenIDBefore = self.windows.screenID(for: window)
+                return screenIDBefore
             }
-            pendingHandOvers.insert(id)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
-                self?.pendingHandOvers.remove(id)
-                self?.handOverIfMoved(window)
+        )
+
+        switch outcome {
+        case .stay:
+            if screenIDNow == nil {
+                log.debug("Not handing \(window) over: it lies on no screen")
+            } else if screenIDBefore == nil {
+                log.debug("Not handing \(window) over: no screen's layout has placed it")
             }
+        case .checkAgain:
+            checkHandOverAgain(for: window, because: mouseButtonsArePressed ? "the mouse button is down" : "an animation is moving it")
+        case let .move(previousScreenID, screenID):
+            log.debug("Handing \(window) over from screen \(previousScreenID) to screen \(screenID)")
+            windows.setScreenID(screenID, for: window)
+
+            if let previousScreen = self.screen(withID: previousScreenID) {
+                distributeEventToScreen(previousScreen, change: .remove(window: window))
+                markScreenForReflow(previousScreen)
+            }
+
+            if let screen = self.screen(withID: screenID) {
+                distributeEventToScreen(screen, change: .add(window: window))
+                markScreenForReflow(screen)
+            }
+        }
+    }
+
+    /// Runs the hand-over check for the window again after a quarter of a second, with one check waiting per window at a time.
+    private func checkHandOverAgain(for window: Window, because reason: String) {
+        let id = window.id()
+        guard !pendingHandOvers.contains(id) else {
             return
         }
-
-        guard
-            let screen = window.screen(),
-            let screenID = screen.screenID(),
-            let previousScreenID = windows.screenID(for: window),
-            previousScreenID != screenID
-        else {
-            return
+        log.debug("Checking the hand-over of \(window) again in a quarter second: \(reason)")
+        pendingHandOvers.insert(id)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
+            self?.pendingHandOvers.remove(id)
+            self?.handOverIfMoved(window)
         }
-
-        log.debug("Handing window over from screen \(previousScreenID) to screen \(screenID): \(window)")
-        windows.setScreenID(screenID, for: window)
-
-        if let previousScreen = self.screen(withID: previousScreenID) {
-            distributeEventToScreen(previousScreen, change: .remove(window: window))
-            markScreenForReflow(previousScreen)
-        }
-
-        distributeEventToScreen(screen, change: .add(window: window))
-        markScreenForReflow(screen)
     }
 
     private func screen(withID screenID: String) -> Screen? {
@@ -1288,6 +1378,11 @@ extension WindowManager: ScreenManagerDelegate {
     }
 
     func activeWindowSet(forScreenManager screenManager: ScreenManager<WindowManager<Application>>, on screen: Screen) -> WindowSet<Window> {
-        return windows.windowSet(forActiveWindowsOnScreen: screen)
+        let activeWindows = windows.activeWindows(onScreen: screen)
+        if let screenID = screen.screenID() {
+            windows.setScreenID(screenID, forAll: activeWindows)
+        }
+        log.debug("Reflowing screen \(screen.screenID() ?? "unknown") with \(activeWindows.count) windows: \(activeWindows)")
+        return windows.windowSet(forWindows: activeWindows)
     }
 }
