@@ -14,7 +14,7 @@
 > - A window is placed on the screen that shows its Space, so a window hanging over the edge between two displays is never left out of every layout ([#1899](https://github.com/ianyh/Amethyst/pull/1899), merged upstream, in Ian's next release).
 > - A window dragged onto another display with the mouse is tiled there as soon as it is released, and the relayout that used to fight the start of every drag waits for the mouse button instead ([#1906](https://github.com/ianyh/Amethyst/pull/1906)).
 > - Two checkboxes on the Debug tab of Preferences decide what the app writes to the system log: warnings and errors, on by default, or every diagnostic detail, off by default. Nothing is written otherwise ([#1907](https://github.com/ianyh/Amethyst/pull/1907)).
-> - The Xcode project no longer carries leftovers from CocoaPods, from the MASShortcut library, or from one developer machine's build folder ([#1911](https://github.com/ianyh/Amethyst/pull/1911)). No effect on the running app.
+> - The Xcode project no longer carries leftovers from CocoaPods, from the MASShortcut library, or from one developer machine's build folder ([#1911](https://github.com/ianyh/Amethyst/pull/1911), merged upstream, in Ian's next release). No effect on the running app.
 > - A fix for a crash when an application closes windows in quick bursts ([#1889](https://github.com/ianyh/Amethyst/pull/1889) with [Silica #23](https://github.com/ianyh/Silica/pull/23), both merged upstream, in Ian's next release).
 >
 > 
