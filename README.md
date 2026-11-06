@@ -1,21 +1,18 @@
 # Amethyst
 
-> **This is a modified version of [Ian Ynda-Hummel's Amethyst](https://github.com/ianyh/Amethyst).** It is maintained by Don Patterson and carries features and fixes that have been proposed upstream but are not yet part of Ian's releases. The official Amethyst, its releases and its documentation live at [ianyh/Amethyst](https://github.com/ianyh/Amethyst). Builds published on this fork's [releases page](https://github.com/djp3/Amethyst/releases) come from the `development` branch here, not from upstream, and they check that page for updates rather than Ian's feed.
+> **This is a modified version of [Ian Ynda-Hummel's Amethyst](https://github.com/ianyh/Amethyst).** It is maintained by Don Patterson and carries features and fixes that have been proposed upstream but are not yet part of Ian's releases. The official Amethyst, its releases and its documentation live at [ianyh/Amethyst](https://github.com/ianyh/Amethyst). Builds published on this fork's [releases page](https://github.com/djp3/Amethyst/releases) come from the `development` branch here, not from upstream, and they check that page for updates rather than Ian's feed. The current builds are based on Ian's 0.25.0 and the commits on his development branch since.
 >
 > What this fork adds, with the upstream pull request for each:
 >
 > - Windows animate as they move between tiles, kept in this fork after Ian declined the upstream proposal ([#1888](https://github.com/ianyh/Amethyst/pull/1888)) over its size and the Screen Recording permission. Off by default: turn on `animate-windows`, and grant Screen Recording for the smoothest version on macOS 14 or later.
 > - A Tertiary Split Partition layout made for very wide and very tall screens, in two forms: a native one, key `tsp`, kept in this fork after the upstream proposal ([#1892](https://github.com/ianyh/Amethyst/pull/1892)) was withdrawn, and a bundled custom layout written in JavaScript, key `tsp-custom`, built on the custom-layout additions below.
 > - Custom layouts can ship inside the app bundle, a frame can declare its own scale factor for mouse resizing, and layout commands receive the user's window resize step ([#1903](https://github.com/ianyh/Amethyst/pull/1903)).
-> - Throwing a window to another screen relayouts the screen it left ([#1891](https://github.com/ianyh/Amethyst/pull/1891), merged upstream, in Ian's 0.25.0).
 > - Removing a window from the Binary Space Partitioning layout keeps the rest of the tree intact ([#1890](https://github.com/ianyh/Amethyst/pull/1890), merged upstream, in Ian's release after 0.25.0).
 > - Toggling tiling shows a Tiling Enabled or Tiling Disabled notice, the layout notice reads "Tiling Disabled: Tall" while tiling is off, and every skipped reflow is logged with its reason ([#1894](https://github.com/ianyh/Amethyst/pull/1894)).
 > - An application that is slow to answer Accessibility is adopted after retries spread over about a minute, or when it next becomes active, instead of being left untiled; a window whose frame could not be read is no longer floated as if it were small; and each attempt and decision is logged ([#1898](https://github.com/ianyh/Amethyst/pull/1898)).
-> - A window is placed on the screen that shows its Space, so a window hanging over the edge between two displays is never left out of every layout ([#1899](https://github.com/ianyh/Amethyst/pull/1899), merged upstream, in Ian's 0.25.0).
 > - A window dragged onto another display with the mouse is tiled there as soon as it is released, and the relayout that used to fight the start of every drag waits for the mouse button instead ([#1906](https://github.com/ianyh/Amethyst/pull/1906)).
 > - Two checkboxes on the Debug tab of Preferences decide what the app writes to the system log: warnings and errors, on by default, or every diagnostic detail, off by default. Nothing is written otherwise ([#1907](https://github.com/ianyh/Amethyst/pull/1907)).
 > - The Xcode project no longer carries leftovers from CocoaPods, from the MASShortcut library, or from one developer machine's build folder ([#1911](https://github.com/ianyh/Amethyst/pull/1911), merged upstream, in Ian's release after 0.25.0). No effect on the running app.
-> - A fix for a crash when an application closes windows in quick bursts ([#1889](https://github.com/ianyh/Amethyst/pull/1889) with [Silica #23](https://github.com/ianyh/Silica/pull/23), both merged upstream, in Ian's 0.25.0).
 >
 > 
 
