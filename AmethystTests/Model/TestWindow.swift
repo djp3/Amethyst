@@ -131,8 +131,10 @@ final class TestWindow: WindowType {
         return pidValue
     }
 
+    var windowTitle: String?
+
     func title() -> String? {
-        return nil
+        return windowTitle
     }
 
     func shouldBeManaged() -> Bool {
