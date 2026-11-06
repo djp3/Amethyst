@@ -42,8 +42,17 @@ class DebugPreferencesViewController: NSViewController {
         revealWindowTitlesButton?.isEnabled = configuration.logsDiagnosticDetails() || configuration.logsWarningsAndErrors()
     }
 
-    /// Hands the bundled logging profile to macOS, which offers to install it in System Settings. Once installed, the
-    /// system log on this Mac shows the window titles that are otherwise stored as private data.
+    /// System Settings' pane for downloaded and installed profiles.
+    static var profilesPaneURL: URL? {
+        if #available(macOS 13, *) {
+            return URL(string: "x-apple.systempreferences:com.apple.Profiles-Settings.extension")
+        }
+        return URL(string: "x-apple.systempreferences:com.apple.preferences.configurationprofiles")
+    }
+
+    /// Hands the bundled logging profile to macOS, then opens System Settings on the pane where the profile waits to
+    /// be installed. Once installed, the system log on this Mac shows the window titles that are otherwise stored as
+    /// private data.
     @IBAction func revealWindowTitles(_ sender: AnyObject) {
         guard let profile = Bundle.main.url(forResource: "RevealWindowTitles", withExtension: "mobileconfig") else {
             log.error("The profile that reveals window titles is missing from the app bundle")
@@ -51,5 +60,12 @@ class DebugPreferencesViewController: NSViewController {
         }
 
         NSWorkspace.shared.open(profile)
+
+        // macOS needs a moment to file the profile before the pane can show it.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+            if let pane = DebugPreferencesViewController.profilesPaneURL {
+                NSWorkspace.shared.open(pane)
+            }
+        }
     }
 }
