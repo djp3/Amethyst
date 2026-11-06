@@ -124,6 +124,15 @@ class SystemLogDestinationTests: QuickSpec {
             }
         }
 
+        describe("the pane the button opens") {
+            it("is System Settings' profiles pane") {
+                let pane = DebugPreferencesViewController.profilesPaneURL
+
+                expect(pane?.scheme).to(equal("x-apple.systempreferences"))
+                expect(pane?.absoluteString).to(contain("Profiles"))
+            }
+        }
+
         describe("the profile that reveals window titles") {
             // A release build signs the profile, which wraps the property list in a CMS envelope.
             func profileContents(of data: Data) -> Data? {
