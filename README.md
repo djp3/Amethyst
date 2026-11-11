@@ -13,6 +13,7 @@
 > - A window dragged onto another display with the mouse is tiled there as soon as it is released, and the relayout that used to fight the start of every drag waits for the mouse button instead ([#1906](https://github.com/ianyh/Amethyst/pull/1906)).
 > - Two checkboxes on the Debug tab of Preferences decide what the app writes to the system log: warnings and errors, on by default, or every diagnostic detail, off by default. Nothing is written otherwise, and window titles in those lines are stored as private data that the log shows only after installing the profile offered on the same tab, which also shows how to remove it again ([#1907](https://github.com/ianyh/Amethyst/pull/1907)).
 > - When an application is killed rather than quit, such as a build stopped from Xcode or a crash, its window leaves the layout and the screen relayouts at once instead of keeping an empty slot ([#1913](https://github.com/ianyh/Amethyst/pull/1913)).
+> - With Restore layouts on launch turned on, a screen's reflows run one at a time again, so two requested in quick succession, such as a focus change followed by a window closing, no longer cancel each other out and leave every window where it was ([#1914](https://github.com/ianyh/Amethyst/pull/1914)).
 > - The Xcode project no longer carries leftovers from CocoaPods, from the MASShortcut library, or from one developer machine's build folder ([#1911](https://github.com/ianyh/Amethyst/pull/1911), merged upstream, in Ian's release after 0.25.0). No effect on the running app.
 >
 > 

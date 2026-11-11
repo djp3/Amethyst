@@ -703,17 +703,32 @@ class AnimatedReflowOperationTests: QuickSpec {
         }
 
         describe("animating windows registry") {
-            it("keeps a window with the screen animating it until that screen releases it") {
+            it("keeps a window with the screen animating it until the animation that claimed it releases it") {
                 let registry = AnimatingWindows()
-                registry.claim([1, 2], for: "external")
+                let claim = registry.claim([1, 2], for: "external")
                 expect(registry.screenID(for: 1)) == "external"
                 expect(registry.screenID(for: 3)).to(beNil())
 
-                // Another screen's release must not disturb the claim.
-                registry.release([1], for: "builtin")
-                expect(registry.screenID(for: 1)) == "external"
+                registry.release(claim)
+                expect(registry.screenID(for: 1)).to(beNil())
+                expect(registry.screenID(for: 2)).to(beNil())
+            }
 
-                registry.release([1, 2], for: "external")
+            it("leaves a later animation's claim alone when an earlier one releases the same windows") {
+                let registry = AnimatingWindows()
+                let earlier = registry.claim([1, 2], for: "external")
+                // A reflow that replaced the earlier one on the same screen, and one on another screen that adopted a window.
+                let replacement = registry.claim([1], for: "external")
+                let other = registry.claim([2], for: "builtin")
+
+                registry.release(earlier)
+                expect(registry.screenID(for: 1)) == "external"
+                expect(registry.screenID(for: 2)) == "builtin"
+                expect(registry.beginWrite(1, for: "external")).to(beTrue())
+                registry.endWrite(1)
+
+                registry.release(replacement)
+                registry.release(other)
                 expect(registry.screenID(for: 1)).to(beNil())
                 expect(registry.screenID(for: 2)).to(beNil())
             }
@@ -773,20 +788,20 @@ class AnimatedReflowOperationTests: QuickSpec {
                 expect(registry.screenID(for: 2)).to(beNil())
             }
 
-            it("forgets a window's destination when its screen releases it") {
+            it("forgets a window's destination when its animation releases it") {
                 let registry = AnimatingWindows()
-                registry.claim([1], for: "external", targets: [1: CGRect(x: 1, y: 2, width: 3, height: 4)])
-                registry.release([1], for: "external")
+                let claim = registry.claim([1], for: "external", targets: [1: CGRect(x: 1, y: 2, width: 3, height: 4)])
+                registry.release(claim)
                 expect(registry.handOff([1])).to(beEmpty())
             }
 
             it("reports only the windows an animation is moving, so other windows' move notifications count as gestures") {
                 let registry = AnimatingWindows()
-                registry.claim([7], for: "external")
+                let claim = registry.claim([7], for: "external")
                 expect(registry.isAnimating(7)).to(beTrue())
                 expect(registry.isAnimating(8)).to(beFalse())
 
-                registry.release([7], for: "external")
+                registry.release(claim)
                 expect(registry.isAnimating(7)).to(beFalse())
             }
         }

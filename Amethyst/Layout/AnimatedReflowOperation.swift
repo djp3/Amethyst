@@ -228,9 +228,17 @@ final class ApplicationFrameWriter<Window: WindowType> {
 final class AnimatingWindows {
     static let shared = AnimatingWindows()
 
+    /// An animation's hold on a set of windows. Releasing it frees only the windows the same hold still has, so a claim made since by a later animation is left alone.
+    struct Claim {
+        fileprivate let windowIDs: [CGWindowID]
+        fileprivate let token = UUID()
+    }
+
     /// Guards every table below and lets a hand-off wait for writes in flight to end.
     private let lock = NSCondition()
     private var screenIDsByWindow: [CGWindowID: String] = [:]
+    /// Which claim currently holds each window.
+    private var claimTokensByWindow: [CGWindowID: UUID] = [:]
     /// Where the animation is taking each claimed window, so a hand-off can put a window still parked off-screen somewhere sane.
     private var targetsByWindow: [CGWindowID: CGRect] = [:]
     /// How many frame writes are being applied to each window right now.
@@ -263,14 +271,18 @@ final class AnimatingWindows {
         return lastSeenFrames.removeValue(forKey: windowID)?.frame
     }
 
-    /// Claims the windows for `screenID`, recording where its animation is taking each one.
-    func claim(_ windowIDs: [CGWindowID], for screenID: String, targets: [CGWindowID: CGRect] = [:]) {
+    /// Claims the windows for `screenID`, recording where its animation is taking each one, and returns the hold to release when the animation ends.
+    @discardableResult
+    func claim(_ windowIDs: [CGWindowID], for screenID: String, targets: [CGWindowID: CGRect] = [:]) -> Claim {
+        let claim = Claim(windowIDs: windowIDs)
         lock.lock()
         for windowID in windowIDs {
             screenIDsByWindow[windowID] = screenID
+            claimTokensByWindow[windowID] = claim.token
             targetsByWindow[windowID] = targets[windowID]
         }
         lock.unlock()
+        return claim
     }
 
     /**
@@ -313,6 +325,7 @@ final class AnimatingWindows {
         var targets: [CGWindowID: CGRect] = [:]
         for windowID in windowIDs {
             screenIDsByWindow[windowID] = nil
+            claimTokensByWindow[windowID] = nil
             targets[windowID] = targetsByWindow.removeValue(forKey: windowID)
         }
 
@@ -321,11 +334,12 @@ final class AnimatingWindows {
         return targets
     }
 
-    /// Releases windows claimed for `screenID`; claims made since by another screen are left alone.
-    func release(_ windowIDs: [CGWindowID], for screenID: String) {
+    /// Releases the windows the claim still holds; windows claimed again since, by this screen or another, are left alone.
+    func release(_ claim: Claim) {
         lock.lock()
-        for windowID in windowIDs where screenIDsByWindow[windowID] == screenID {
+        for windowID in claim.windowIDs where claimTokensByWindow[windowID] == claim.token {
             screenIDsByWindow[windowID] = nil
+            claimTokensByWindow[windowID] = nil
             targetsByWindow[windowID] = nil
         }
         lock.unlock()
@@ -512,9 +526,10 @@ final class AnimatedReflowOperation<Window: WindowType>: Operation, @unchecked S
 
         var participants = prepareParticipants(in: windowSet)
         let windowIDs = participants.map { $0.window.cgID() }
+        var claim: AnimatingWindows.Claim?
         if let screenID = screenID {
             let targets = Dictionary(participants.map { ($0.window.cgID(), $0.target) }, uniquingKeysWith: { first, _ in first })
-            AnimatingWindows.shared.claim(windowIDs, for: screenID, targets: targets)
+            claim = AnimatingWindows.shared.claim(windowIDs, for: screenID, targets: targets)
         }
 
         var snapshotAnimator: SnapshotAnimating?
@@ -527,8 +542,8 @@ final class AnimatedReflowOperation<Window: WindowType>: Operation, @unchecked S
             if let animator = snapshotAnimator, !overlayHandedOff {
                 runOnMainSync { animator.cancel() }
             }
-            if let screenID = screenID {
-                AnimatingWindows.shared.release(windowIDs, for: screenID)
+            if let claim = claim {
+                AnimatingWindows.shared.release(claim)
             }
             participants.forEach { $0.window.endAnimatedMovement() }
         }
