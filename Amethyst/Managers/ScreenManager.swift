@@ -44,14 +44,14 @@ final class ScreenManager<Delegate: ScreenManagerDelegate>: NSObject, Codable {
     private(set) var lastFocusedWindow: Window?
     private let userConfiguration: UserConfiguration
 
-    private let reflowOperationDispatchQueue = DispatchQueue(
-        label: "ScreenManager.reflowOperationQueue",
-        qos: .userInitiated,
-        attributes: [],
-        autoreleaseFrequency: .inherit,
-        target: nil
-    )
-    private let reflowOperationQueue = OperationQueue()
+    /// Runs reflows one at a time in the order they were requested, so a reflow cancelled midway can never land its frames after the one that replaced it.
+    let reflowOperationQueue: OperationQueue = {
+        let queue = OperationQueue()
+        queue.name = "ScreenManager.reflowOperationQueue"
+        queue.maxConcurrentOperationCount = 1
+        queue.underlyingQueue = DispatchQueue(label: "ScreenManager.reflowOperationQueue", qos: .userInitiated)
+        return queue
+    }()
 
     private var layouts: [Layout<Window>] = []
     private var currentLayoutIndexBySpaceUUID: [String: Int] = [:]
@@ -88,8 +88,6 @@ final class ScreenManager<Delegate: ScreenManagerDelegate>: NSObject, Codable {
         super.init()
 
         layouts = LayoutType.layoutsWithConfiguration(userConfiguration)
-
-        reflowOperationQueue.underlyingQueue = reflowOperationDispatchQueue
 
         // Warm the window list the snapshot animation's backdrop needs so the first reflow does not have to wait for it.
         if #available(macOS 14.0, *), userConfiguration.shouldAnimateWindowMovement(), ScreenCapturePermission.isGranted {
