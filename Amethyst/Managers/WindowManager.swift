@@ -178,12 +178,23 @@ final class WindowManager<Application: ApplicationType>: NSObject, Codable {
         }
 
         let pid = activatedApplication.processIdentifier
-        guard applications[pid] == nil, !adoptionsInProgress.contains(pid), activatedApplication.isManageable == .manageable else {
+        guard applications[pid] == nil, !adoptionsInProgress.contains(pid), applicationObservations[pid] == nil else {
             return
         }
 
-        log.info("Adopting \(activatedApplication.localizedName ?? "<unknown>") (pid \(pid)) on activation")
-        add(runningApplication: activatedApplication)
+        let name = activatedApplication.localizedName ?? "<unknown>"
+
+        switch activatedApplication.isManageable {
+        case .manageable:
+            log.info("Adopting \(name) (pid \(pid)) on activation")
+            add(runningApplication: activatedApplication)
+        case .undetermined where !activatedApplication.isFinishedLaunching:
+            // The application came to the front before it finished launching; it is adopted once it has.
+            log.info("Watching \(name) (pid \(pid)), activated before it finished launching")
+            monitorUndeterminedApplication(activatedApplication)
+        case .undetermined, .unmanageable:
+            break
+        }
     }
 
     @objc func applicationDidHide(_ notification: Notification) {
@@ -263,12 +274,19 @@ extension WindowManager: ApplicationEventHandlerDelegate {
     }
 
     func add(applicationWithPID pid: pid_t) {
-        guard let runningApplication = NSRunningApplication(processIdentifier: pid) else {
-            log.warning("process launched with no application: \(pid)")
-            return
-        }
-
-        add(runningApplication: runningApplication)
+        LaunchedApplicationLookup(pid: pid) { [weak self] outcome in
+            switch outcome {
+            case .found(let runningApplication, let emptyLookups):
+                if emptyLookups > 0 {
+                    log.info("process \(pid) was listed as an application after \(emptyLookups) empty lookup\(emptyLookups == 1 ? "" : "s")")
+                }
+                self?.add(runningApplication: runningApplication)
+            case .processExited:
+                log.debug("process \(pid) exited before it was listed as an application")
+            case .notListed:
+                log.warning("process launched with no application: \(pid)")
+            }
+        }.start()
     }
 
     func remove(applicationWithPID pid: pid_t) {
@@ -925,27 +943,47 @@ extension WindowManager: MouseStateKeeperDelegate {
 
         guard let screen = draggedWindow.screen() else { return }
 
-        let windows = activeWindows(on: screen)
-
         // need to flip mouse coordinate system to fit Amethyst https://stackoverflow.com/a/45289010/2063546
         let pointerLocation = Screen.convertFromCocoa(NSPointToCGPoint(NSEvent.mouseLocation))
 
+        // A window dragged against the menu bar or the edge of the screen stops while the pointer carries on, so when nothing lies under the pointer the drop point is the point of the window nearest to it.
+        var dropPoints = [pointerLocation]
+        let nearestPoint = draggedWindow.frame().nearestPoint(to: pointerLocation)
+        if nearestPoint != pointerLocation {
+            dropPoints.append(nearestPoint)
+        }
+
+        for dropPoint in dropPoints {
+            guard let targetWindow = window(under: dropPoint, on: screen, besides: draggedWindow) else {
+                continue
+            }
+
+            // Dropped back on its own tile: the reflow puts it in place.
+            guard targetWindow != draggedWindow else {
+                log.debug("Dropped \(draggedWindow) on its own tile: putting it back", context: PrivateWindowTitle(of: draggedWindow))
+                break
+            }
+
+            log.debug("Dropped \(draggedWindow) on \(targetWindow): swapping them", context: PrivateWindowTitle(of: draggedWindow))
+            executeTransition(.switchWindows(draggedWindow, targetWindow))
+            return
+        }
+
+        // Dropped on no other window: the reflow puts it back where the layout has it.
+        log.debug("Dropped \(draggedWindow) on no window: putting it back", context: PrivateWindowTitle(of: draggedWindow))
+        markScreenForReflow(screen)
+    }
+
+    /// The window whose tile holds `point` according to the current layout, or failing that the window on screen whose frame holds it, other than `draggedWindow`.
+    private func window(under point: CGPoint, on screen: Screen, besides draggedWindow: Window) -> Window? {
         if let screenManager: ScreenManager<WindowManager<Application>> = focusedScreenManager(), let layout = screenManager.currentLayout {
-            let windowSet = self.windows.windowSet(forActiveWindowsOnScreen: screen)
-            if let layoutWindow = layout.windowAtPoint(pointerLocation, of: windowSet, on: screen), let framedWindow = self.windows.window(withID: layoutWindow.id) {
-                log.debug("Dropped \(draggedWindow) on \(framedWindow): swapping them")
-                executeTransition(.switchWindows(draggedWindow, framedWindow))
-                return
+            let windowSet = windows.windowSet(forActiveWindowsOnScreen: screen)
+            if let layoutWindow = layout.windowAtPoint(point, of: windowSet, on: screen), let framedWindow = windows.window(withID: layoutWindow.id) {
+                return framedWindow
             }
         }
 
-        // Ignore if there is no window at that point
-        guard let secondWindow = WindowsInformation.alternateWindowForScreenAtPoint(pointerLocation, withWindows: windows, butNot: draggedWindow) else {
-            log.debug("Dropped \(draggedWindow) on no window: leaving it where it is")
-            return
-        }
-        log.debug("Dropped \(draggedWindow) near \(secondWindow): swapping them")
-        executeTransition(.switchWindows(draggedWindow, secondWindow))
+        return WindowsInformation.alternateWindowForScreenAtPoint(point, withWindows: activeWindows(on: screen), butNot: draggedWindow)
     }
 }
 
