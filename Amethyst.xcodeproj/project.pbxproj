@@ -125,6 +125,7 @@
 		40C3F91F1BD1B22E00F58660 /* SystemConfiguration.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 40C3F91B1BD1B22E00F58660 /* SystemConfiguration.framework */; };
 		40C3F9231BD1B35E00F58660 /* libc++.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = 40C3F9221BD1B35E00F58660 /* libc++.tbd */; };
 		40C3F9251BD1B36C00F58660 /* libz.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = 40C3F9241BD1B36C00F58660 /* libz.tbd */; };
+		DE20261112000000000000A2 /* LaunchedApplicationLookup.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE20261112000000000000A1 /* LaunchedApplicationLookup.swift */; };
 		40CEF4301C2B8D21004C3297 /* ScreenManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40CEF42F1C2B8D21004C3297 /* ScreenManager.swift */; };
 		DE5C0A2200000000000000A2 /* ApplicationAdoption.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE5C0A2100000000000000A1 /* ApplicationAdoption.swift */; };
 		40CF37C029B440A100CDB07A /* ArgumentParser in Frameworks */ = {isa = PBXBuildFile; productRef = 40CF37BF29B440A100CDB07A /* ArgumentParser */; };
@@ -138,6 +139,7 @@
 		40E2D2302D544F1E00D16B87 /* Silica in Frameworks */ = {isa = PBXBuildFile; productRef = 40E2D22F2D544F1E00D16B87 /* Silica */; };
 		40E705D8176EAD7800850DA6 /* default.amethyst in Resources */ = {isa = PBXBuildFile; fileRef = 40E705D7176EAD7800850DA6 /* default.amethyst */; };
 		DE5C0A5200000000000000D2 /* Layouts in Resources */ = {isa = PBXBuildFile; fileRef = DE5C0A5100000000000000D1 /* Layouts */; };
+		DE20261112000000000000A4 /* LaunchedApplicationLookupTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE20261112000000000000A3 /* LaunchedApplicationLookupTests.swift */; };
 		40EC47F423F3A30100048B4F /* ScreenManagerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40EC47F323F3A30100048B4F /* ScreenManagerTests.swift */; };
 		DE5C0A6400000000000000E4 /* HeldReflowsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE5C0A6300000000000000E3 /* HeldReflowsTests.swift */; };
 		DE5C0A6600000000000000E6 /* SystemLogDestinationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE5C0A6500000000000000E5 /* SystemLogDestinationTests.swift */; };
@@ -280,6 +282,7 @@
 		40C3F91B1BD1B22E00F58660 /* SystemConfiguration.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SystemConfiguration.framework; path = System/Library/Frameworks/SystemConfiguration.framework; sourceTree = SDKROOT; };
 		40C3F9221BD1B35E00F58660 /* libc++.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = "libc++.tbd"; path = "usr/lib/libc++.tbd"; sourceTree = SDKROOT; };
 		40C3F9241BD1B36C00F58660 /* libz.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libz.tbd; path = usr/lib/libz.tbd; sourceTree = SDKROOT; };
+		DE20261112000000000000A1 /* LaunchedApplicationLookup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaunchedApplicationLookup.swift; sourceTree = "<group>"; };
 		40CEF42F1C2B8D21004C3297 /* ScreenManager.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = ScreenManager.swift; sourceTree = "<group>"; usesTabs = 0; };
 		DE5C0A2100000000000000A1 /* ApplicationAdoption.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApplicationAdoption.swift; sourceTree = "<group>"; };
 		40CF37C129B58C7400CDB07A /* WindowsInfo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowsInfo.swift; sourceTree = "<group>"; };
@@ -293,6 +296,7 @@
 		40DA8B6D27D5AA7300C291AF /* subset.js */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.javascript; path = subset.js; sourceTree = "<group>"; };
 		40E705D7176EAD7800850DA6 /* default.amethyst */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = default.amethyst; sourceTree = "<group>"; };
 		DE5C0A5100000000000000D1 /* Layouts */ = {isa = PBXFileReference; lastKnownFileType = folder; path = Layouts; sourceTree = "<group>"; };
+		DE20261112000000000000A3 /* LaunchedApplicationLookupTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaunchedApplicationLookupTests.swift; sourceTree = "<group>"; };
 		40EC47F323F3A30100048B4F /* ScreenManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenManagerTests.swift; sourceTree = "<group>"; };
 		DE5C0A6300000000000000E3 /* HeldReflowsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HeldReflowsTests.swift; sourceTree = "<group>"; };
 		DE5C0A6500000000000000E5 /* SystemLogDestinationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemLogDestinationTests.swift; sourceTree = "<group>"; };
@@ -387,6 +391,7 @@
 				401C35B6224831470019ED07 /* FocusTransitionCoordinator.swift */,
 				401BC8991CE8C6AE00F89B3F /* HotKeyManager.swift */,
 				401BC8B31CE9250800F89B3F /* HotKeyRegistrar.swift */,
+				DE20261112000000000000A1 /* LaunchedApplicationLookup.swift */,
 				401BC8B51CE9259000F89B3F /* LayoutType.swift */,
 				409645B21CEE8D950042F459 /* LogManager.swift */,
 				40CEF42F1C2B8D21004C3297 /* ScreenManager.swift */,
@@ -576,6 +581,7 @@
 				DE5C0A2300000000000000A3 /* ApplicationAdoptionTests.swift */,
 				DE5C0A4500000000000000C5 /* LayoutDirectoriesTests.swift */,
 				DE5C0A6100000000000000E1 /* HandOverOutcomeTests.swift */,
+				DE20261112000000000000A3 /* LaunchedApplicationLookupTests.swift */,
 				40EC47F323F3A30100048B4F /* ScreenManagerTests.swift */,
 				DE5C0A6300000000000000E3 /* HeldReflowsTests.swift */,
 				DE5C0A6500000000000000E5 /* SystemLogDestinationTests.swift */,
@@ -917,6 +923,7 @@
 				DA1A0008AE0B000000000008 /* ReflowAnimationOverlay.swift in Sources */,
 				401BC8B41CE9250800F89B3F /* HotKeyRegistrar.swift in Sources */,
 				40637073224EF9B20081299D /* Change.swift in Sources */,
+				DE20261112000000000000A2 /* LaunchedApplicationLookup.swift in Sources */,
 				40CEF4301C2B8D21004C3297 /* ScreenManager.swift in Sources */,
 				DE5C0A2200000000000000A2 /* ApplicationAdoption.swift in Sources */,
 				401C35B522482EAF0019ED07 /* WindowTransitionCoordinator.swift in Sources */,
@@ -986,6 +993,7 @@
 				404541712697C14A00861BE8 /* CustomLayoutTests.swift in Sources */,
 				4000DB10239CA07000365A0C /* WideLayoutTests.swift in Sources */,
 				40AB5BEB23AB182300E29346 /* WidescreenTallLayoutTests.swift in Sources */,
+				DE20261112000000000000A4 /* LaunchedApplicationLookupTests.swift in Sources */,
 				40EC47F423F3A30100048B4F /* ScreenManagerTests.swift in Sources */,
 				DE5C0A6400000000000000E4 /* HeldReflowsTests.swift in Sources */,
 				DE5C0A6600000000000000E6 /* SystemLogDestinationTests.swift in Sources */,
