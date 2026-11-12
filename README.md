@@ -15,6 +15,7 @@
 > - When an application is killed rather than quit, such as a build stopped from Xcode or a crash, its window leaves the layout and the screen relayouts at once instead of keeping an empty slot ([#1913](https://github.com/ianyh/Amethyst/pull/1913)).
 > - With Restore layouts on launch turned on, a screen's reflows run one at a time again, so two requested in quick succession, such as a focus change followed by a window closing, no longer cancel each other out and leave every window where it was ([#1914](https://github.com/ianyh/Amethyst/pull/1914)).
 > - An application whose launch is reported a moment before the system lists it is looked up again over the next few seconds instead of being left untracked, so its window is tiled rather than left where the app put it ([#1915](https://github.com/ianyh/Amethyst/pull/1915)).
+> - A window dragged with the mouse and let go while the pointer is in the menu bar or past the edge of the screen swaps with the tile the window itself landed on, and a drop that lands on no other window puts the window back in its tile instead of leaving it where it was let go ([#1916](https://github.com/ianyh/Amethyst/pull/1916)).
 > - The Xcode project no longer carries leftovers from CocoaPods, from the MASShortcut library, or from one developer machine's build folder ([#1911](https://github.com/ianyh/Amethyst/pull/1911), merged upstream, in Ian's release after 0.25.0). No effect on the running app.
 >
 > 
