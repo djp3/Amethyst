@@ -65,17 +65,33 @@ enum TertiarySplitAxis {
 }
 
 /**
- A pane in the tree of splits, numbered in the order windows fill the panes.
+ A pane in the tree of splits, numbered in the order the panes open.
 
  Node 0 is the root and holds the main pane. Every other node holds one window in its middle and can be divided
  again on either side. Numbers run level by level: the root's left or top side is node 1 and its right or bottom
  side is node 2; each later level numbers the left or top sides of the previous level's nodes in order, then
- their right or bottom sides. Side window `k`, counting from zero, occupies node `k + 1`.
+ their right or bottom sides. With `n` side windows, nodes 1 to `n` are open.
  */
 struct TertiarySplitNode {
     static let root = TertiarySplitNode(number: 0)
 
     let number: Int
+
+    /**
+     The node of a side window when `count` side windows are open.
+
+     Side windows fill the nodes in the order they arrived. The newest side window is at the front of the list when
+     new windows take the main pane and at the end otherwise; either way it holds the node that opened last, so an
+     arrival leaves every other window in its node.
+
+     - Parameters:
+        - index: The side window's position among the side windows in list order, counting from zero.
+        - count: The number of side windows.
+        - newWindowsToMain: Whether new windows join the front of the window list.
+     */
+    static func holding(sideWindow index: Int, of count: Int, newWindowsToMain: Bool) -> TertiarySplitNode {
+        return TertiarySplitNode(number: newWindowsToMain ? count - index : index + 1)
+    }
 
     /// The depth of the node. The root is at level 0 and level `n` holds `2^n` nodes.
     var level: Int {
@@ -142,11 +158,16 @@ struct TertiarySplitPanes {
  Tiles windows by dividing the screen three ways: a main pane in the middle with a side pane on each side, where each
  side pane is divided three ways again as windows arrive.
 
- A pane wider than it is tall divides into columns; a tall or square pane divides into rows. The first window fills
- the screen. The second takes the left or top side and the third takes the right or bottom side, a third each at the
- default ratio. Later windows divide the side panes into thirds the same way, level by level: the fourth divides the
- second window's pane and the fifth the third window's, then the sixth and seventh take the remaining sides of those
- two panes, and so on, always filling the left or top sides of a level before its right or bottom sides.
+ A pane wider than it is tall divides into columns; a tall or square pane divides into rows. A single window fills
+ the screen. The first side pane to open is the left or top one and the second the right or bottom one, a third each
+ at the default ratio. Later panes divide the side panes into thirds the same way, level by level: the third divides
+ the first side pane and the fourth the second, then the fifth and sixth take the remaining sides of those two panes,
+ and so on, always opening the left or top sides of a level before its right or bottom sides.
+
+ Side windows fill the panes in the order they arrived, so a new window disturbs as little as possible: one existing
+ pane gives up part of its space and every other window stays where it is. When new windows join the end of the
+ window list, the side windows fill the panes in list order. When new windows take the main pane, the previous main
+ window moves into the pane that opens, so the side windows fill the panes from the end of the list.
  */
 class TertiarySplitPartitionLayout<Window: WindowType>: Layout<Window>, PanedLayout {
     override static var layoutName: String { return "Tertiary Split Partition" }
@@ -208,14 +229,17 @@ class TertiarySplitPartitionLayout<Window: WindowType>: Layout<Window>, PanedLay
         // Main windows share the main pane, stacked across the direction of the split.
         var frames = root.axis.perpendicular.divide(root.middle, into: mainWindowCount)
 
-        var sideFrames = [CGRect](repeating: .zero, count: sideWindowCount)
+        var nodeFrames = [CGRect](repeating: .zero, count: sideWindowCount)
         if let first = root.first {
-            assignFrames(under: TertiarySplitNode.root.firstSide, in: first, sideWindowCount: sideWindowCount, to: &sideFrames)
+            assignFrames(under: TertiarySplitNode.root.firstSide, in: first, sideWindowCount: sideWindowCount, to: &nodeFrames)
         }
         if let second = root.second {
-            assignFrames(under: TertiarySplitNode.root.secondSide, in: second, sideWindowCount: sideWindowCount, to: &sideFrames)
+            assignFrames(under: TertiarySplitNode.root.secondSide, in: second, sideWindowCount: sideWindowCount, to: &nodeFrames)
         }
-        frames += sideFrames
+        let newWindowsToMain = UserConfiguration.shared.sendNewWindowsToMainPane()
+        frames += (0..<sideWindowCount).map { index in
+            nodeFrames[TertiarySplitNode.holding(sideWindow: index, of: sideWindowCount, newWindowsToMain: newWindowsToMain).number - 1]
+        }
 
         // Resizing any window is read as a change to the main pane's share of the screen along the root's axis.
         let screenLength = root.axis.length(of: screenFrame)
@@ -242,7 +266,7 @@ class TertiarySplitPartitionLayout<Window: WindowType>: Layout<Window>, PanedLay
         }
     }
 
-    /// Stores the frame of the window at `node` and of every window dividing it, indexed by side window.
+    /// Stores the frame of the window at `node` and of every window dividing it, indexed by node number less one.
     private func assignFrames(under node: TertiarySplitNode, in rect: CGRect, sideWindowCount: Int, to frames: inout [CGRect]) {
         let panes = TertiarySplitPanes(
             dividing: rect,
