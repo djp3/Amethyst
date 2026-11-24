@@ -1,9 +1,10 @@
+
+
+https://github.com/user-attachments/assets/25bb3c34-a4ec-4696-b23b-a13902aca9a2
+
 # Amethyst - a window tiling manager
 
 Quit wasting pixels on your big screens! OCD for your LCD.
-
-![Windows](https://ianyh.com/amethyst/images/windows.png)
-
 
 > **This is a modified version of [Ian Ynda-Hummel's Amethyst](https://github.com/ianyh/Amethyst).** It is maintained by Don Patterson (@djp3) and carries features and fixes that have been proposed upstream (and some that were rejected upstream) but are not yet part of Ian's releases. The official Amethyst, its releases and its documentation live at [ianyh/Amethyst](https://github.com/ianyh/Amethyst). Builds published on this fork's [releases page](https://github.com/djp3/Amethyst/releases) come from the `development` branch here, not from upstream, and they check this repo for updates rather than Ian's feed. The current builds include everything in Ian's 0.25.1 and the changes merged on his development branch since.  I intend to continue to track upstream and open PRs against it as long as the projects don't diverge too much.
 >
