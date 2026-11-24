@@ -2,9 +2,15 @@
 //
 // The screen is divided three ways: a main pane in the middle with a side pane on each side, and each side pane is
 // divided three ways again as windows arrive. A pane wider than it is tall divides into columns; a tall or square
-// pane divides into rows. The first window fills the screen. The second takes the left or top side and the third the
-// right or bottom side, a third each at the default ratio. Later windows divide the side panes into thirds the same
-// way, level by level, always filling the left or top sides of a level before its right or bottom sides.
+// pane divides into rows. A single window fills the screen. The first side pane to open is the left or top one and
+// the second the right or bottom one, a third each at the default ratio. Later panes divide the side panes into
+// thirds the same way, level by level, always opening the left or top sides of a level before its right or bottom
+// sides.
+//
+// Side windows fill the panes in the order they arrived, so a new window disturbs as little as possible: one existing
+// pane gives up part of its space and every other window stays where it is. When new windows join the end of the
+// window list, the side windows fill the panes in list order. When new windows take the main pane, the previous main
+// window moves into the pane that opens, so the side windows fill the panes from the end of the list.
 
 // How many sides of the main pane held windows the last time frames were assigned. A drag with one side occupied
 // shows the ratio plus half of what the ratio leaves over, and the recommendation is converted back accordingly.
@@ -37,10 +43,10 @@ function layout() {
         return parts;
     };
 
-    // Panes are numbered in the order windows fill them. Node 0 is the root and holds the main pane. Numbers run
-    // level by level: the root's left or top side is node 1 and its right or bottom side is node 2; each later level
-    // numbers the left or top sides of the previous level's nodes in order, then their right or bottom sides. Side
-    // window `k`, counting from zero, occupies node `k + 1`.
+    // Panes are numbered in the order they open. Node 0 is the root and holds the main pane. Numbers run level by
+    // level: the root's left or top side is node 1 and its right or bottom side is node 2; each later level numbers
+    // the left or top sides of the previous level's nodes in order, then their right or bottom sides. With `n` side
+    // windows, nodes 1 to `n` are open.
     const level = (node) => 31 - Math.clz32(node + 1);
     const firstSide = (node) => {
         const depth = level(node);
@@ -68,17 +74,22 @@ function layout() {
         };
     };
 
-    // Stores the frame of the window at `node` and of every window dividing it, indexed by side window.
-    const assignFrames = (node, rect, sideWindowCount, frames) => {
+    // Stores the frame of the window at `node` and of every window dividing it, indexed by node number less one.
+    const assignFrames = (node, rect, sideWindowCount, nodeFrames) => {
         const divided = panes(rect, node, sideWindowCount, sidePaneMiddleRatio);
-        frames[node - 1] = divided.middle;
+        nodeFrames[node - 1] = divided.middle;
         if (divided.first) {
-            assignFrames(firstSide(node), divided.first, sideWindowCount, frames);
+            assignFrames(firstSide(node), divided.first, sideWindowCount, nodeFrames);
         }
         if (divided.second) {
-            assignFrames(secondSide(node), divided.second, sideWindowCount, frames);
+            assignFrames(secondSide(node), divided.second, sideWindowCount, nodeFrames);
         }
     };
+
+    // The node of side window `k`, counting side windows from zero in list order. The newest side window is at the
+    // front of the list when new windows take the main pane and at the end otherwise; either way it holds the node
+    // that opened last.
+    const sideWindowNode = (k, sideWindowCount, newWindowsToMain) => (newWindowsToMain ? sideWindowCount - k : k + 1);
 
     const clamp = (ratio) => Math.max(0, Math.min(1, ratio));
     const resizeStep = (settings) => (settings && typeof settings.windowResizeStep === "number" ? settings.windowResizeStep : 0.05);
@@ -112,7 +123,7 @@ function layout() {
             ...state,
             mainPaneRatio: clamp(mainPaneSideCount === 1 ? 2 * ratio - 1 : ratio)
         }),
-        getFrameAssignments: (windows, screenFrame, state) => {
+        getFrameAssignments: (windows, screenFrame, state, extendedFrames, settings) => {
             const mainWindowCount = Math.min(state.mainPaneCount, windows.length);
             const sideWindowCount = windows.length - mainWindowCount;
             const root = panes(screenFrame, 0, sideWindowCount, state.mainPaneRatio);
@@ -120,13 +131,15 @@ function layout() {
 
             // Main windows share the main pane, stacked across the direction of the split.
             const frames = divide(perpendicular(root.axis), root.middle, mainWindowCount);
-            const sideFrames = new Array(sideWindowCount).fill(null);
+            const nodeFrames = new Array(sideWindowCount).fill(null);
             if (root.first) {
-                assignFrames(firstSide(0), root.first, sideWindowCount, sideFrames);
+                assignFrames(firstSide(0), root.first, sideWindowCount, nodeFrames);
             }
             if (root.second) {
-                assignFrames(secondSide(0), root.second, sideWindowCount, sideFrames);
+                assignFrames(secondSide(0), root.second, sideWindowCount, nodeFrames);
             }
+            const newWindowsToMain = Boolean(settings && settings.newWindowsToMain);
+            const sideFrames = nodeFrames.map((_, k) => nodeFrames[sideWindowNode(k, sideWindowCount, newWindowsToMain) - 1]);
             const allFrames = frames.concat(sideFrames);
 
             // Resizing any window is read as a change to the main pane's share of the screen along the root's axis.
