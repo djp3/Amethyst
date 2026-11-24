@@ -1,135 +1,46 @@
-# Amethyst
 
-> **This is a modified version of [Ian Ynda-Hummel's Amethyst](https://github.com/ianyh/Amethyst).** It is maintained by Don Patterson and carries features and fixes that have been proposed upstream but are not yet part of Ian's releases. The official Amethyst, its releases and its documentation live at [ianyh/Amethyst](https://github.com/ianyh/Amethyst). Builds published on this fork's [releases page](https://github.com/djp3/Amethyst/releases) come from the `development` branch here, not from upstream, and they check that page for updates rather than Ian's feed. The current builds are based on Ian's 0.25.0 and the commits on his development branch since.
+
+https://github.com/user-attachments/assets/25bb3c34-a4ec-4696-b23b-a13902aca9a2
+
+# Amethyst - a window tiling manager
+
+Quit wasting pixels on your big screens! OCD for your LCD.
+
+> **This is a modified version of [Ian Ynda-Hummel's Amethyst](https://github.com/ianyh/Amethyst).** It is maintained by Don Patterson (@djp3) and carries features and fixes that have been proposed upstream (and some that were rejected upstream) but are not yet part of Ian's releases. The official Amethyst, its releases and its documentation live at [ianyh/Amethyst](https://github.com/ianyh/Amethyst). Builds published on this fork's [releases page](https://github.com/djp3/Amethyst/releases) come from the `development` branch here, not from upstream, and they check this repo for updates rather than Ian's feed. The current builds include everything in Ian's 0.25.1 and the changes merged on his development branch since.  I intend to continue to track upstream and open PRs against it as long as the projects don't diverge too much.
 >
-> What this fork adds, with the upstream pull request for each:
+> What this fork adds that a user might care about:
 >
-> - Windows animate as they move between tiles, kept in this fork after Ian declined the upstream proposal ([#1888](https://github.com/ianyh/Amethyst/pull/1888)) over its size and the Screen Recording permission. Off by default: turn on `animate-windows`, and grant Screen Recording for the smoothest version on macOS 14 or later.
-> - A Tertiary Split Partition layout made for very wide and very tall screens, in two forms: a native one, key `tsp`, kept in this fork after the upstream proposal ([#1892](https://github.com/ianyh/Amethyst/pull/1892)) was withdrawn, and a bundled custom layout written in JavaScript, key `tsp-custom`, built on the custom-layout additions below. Both keep the windows already on the screen where they are as new ones arrive, whether new windows go to the main pane or to the end of the window list ([djp3#4](https://github.com/djp3/Amethyst/issues/4)).
+> - Windows animate as they move between tiles (my favorite!), kept in this fork after Ian declined the upstream proposal ([#1888](https://github.com/ianyh/Amethyst/pull/1888)) over its size and the Screen Recording permission. Off by default: turn on `animate-windows`, and grant Screen Recording for the smoothest version on macOS 14 or later.
+> - A Tertiary Split Partition layout (my second favorite!) made for very wide and very tall screens, in two forms: a native one, key `tsp` (@ianyh doesn't want new native layouts upstream, so it stays in this fork after the upstream proposal ([#1892](https://github.com/ianyh/Amethyst/pull/1892)) was withdrawn) and a bundled custom layout written in JavaScript, key `tsp-custom`, built on the custom-layout additions below.
+
+> The rest is plumbing and fixes, mostly making the tiling smoother and more resilient:
+>
 > - Custom layouts can ship inside the app bundle, a frame can declare its own scale factor for mouse resizing, and layouts receive the user's settings: the window resize step for their commands, and whether new windows go to the main pane for placing windows ([#1903](https://github.com/ianyh/Amethyst/pull/1903)).
-> - Removing a window from the Binary Space Partitioning layout keeps the rest of the tree intact ([#1890](https://github.com/ianyh/Amethyst/pull/1890), merged upstream, in Ian's release after 0.25.0).
-> - Toggling tiling shows a Tiling Enabled or Tiling Disabled notice, the layout notice says "Tiling Disabled" under the layout name while tiling is off, and every skipped reflow is logged with its reason ([#1894](https://github.com/ianyh/Amethyst/pull/1894), merged upstream, in Ian's release after 0.25.0).
+> - Toggling tiling shows a Tiling Enabled or Tiling Disabled notice, the layout notice says "Tiling Disabled" under the layout name while tiling is off, and every skipped reflow is logged with its reason ([#1894](https://github.com/ianyh/Amethyst/pull/1894), merged upstream after Ian's 0.25.1).
 > - An application that is slow to answer Accessibility is adopted after retries spread over about a minute, or when it next becomes active, even one that comes to the front before it has finished launching, instead of being left untiled; a window whose frame could not be read is no longer floated as if it were small; and each attempt and decision is logged ([#1898](https://github.com/ianyh/Amethyst/pull/1898)).
 > - A window dragged onto another display with the mouse is tiled there as soon as it is released, and the relayout that used to fight the start of every drag waits for the mouse button instead ([#1906](https://github.com/ianyh/Amethyst/pull/1906)).
 > - Two checkboxes on the Debug tab of Preferences decide what the app writes to the system log: warnings and errors, on by default, or every diagnostic detail, off by default. Nothing is written otherwise, and window titles in those lines are stored as private data that the log shows only after installing the profile offered on the same tab, which also shows how to remove it again ([#1907](https://github.com/ianyh/Amethyst/pull/1907)).
-> - When an application is killed rather than quit, such as a build stopped from Xcode or a crash, its window leaves the layout and the screen relayouts at once instead of keeping an empty slot ([#1913](https://github.com/ianyh/Amethyst/pull/1913), merged upstream, in Ian's release after 0.25.0).
+> - When an application is killed rather than quit, such as a build stopped from Xcode or a crash, its window leaves the layout and the screen relayouts at once instead of keeping an empty slot ([#1913](https://github.com/ianyh/Amethyst/pull/1913), merged upstream after Ian's 0.25.1).
 > - With Restore layouts on launch turned on, a screen's reflows run one at a time again, so two requested in quick succession, such as a focus change followed by a window closing, no longer cancel each other out and leave every window where it was ([#1914](https://github.com/ianyh/Amethyst/pull/1914)).
 > - An application whose launch is reported a moment before the system lists it is looked up again over the next few seconds instead of being left untracked, so its window is tiled rather than left where the app put it ([#1915](https://github.com/ianyh/Amethyst/pull/1915)).
 > - A window dragged with the mouse and let go while the pointer is in the menu bar or past the edge of the screen swaps with the tile the window itself landed on, and a drop that lands on no other window puts the window back in its tile instead of leaving it where it was let go ([#1916](https://github.com/ianyh/Amethyst/pull/1916)).
-> - Preferences opens when Amethyst is opened again from the Finder or Spotlight, and no longer whenever the app comes to the front for some other reason, such as Check for Updates showing its panel ([#1918](https://github.com/ianyh/Amethyst/pull/1918), merged upstream, in Ian's release after 0.25.0).
-> - Shortcuts can be recorded and cleared again in Preferences on macOS 27, by updating the shortcut recorder library to a version that works there ([#1919](https://github.com/ianyh/Amethyst/pull/1919), merged upstream, in Ian's release after 0.25.0).
-> - The Xcode project no longer carries leftovers from CocoaPods, from the MASShortcut library, or from one developer machine's build folder ([#1911](https://github.com/ianyh/Amethyst/pull/1911), merged upstream, in Ian's release after 0.25.0). No effect on the running app.
 >
 > 
 
-Tiling window manager for macOS along the lines of [xmonad](https://xmonad.org/).
-
-![Windows](https://ianyh.com/amethyst/images/windows.png)
-
-If you want to learn more about tiling window managers and the features of Amethyst there are some great community resources on YouTube.
-
-[Boost your MacOS PRODUCTIVITY with Amethyst | Tiling Window Manager](https://www.youtube.com/watch?v=7Z9-Ry4yGNc)
 
 ## Getting Amethyst
 
-Amethyst is available for direct download on the [releases page](https://github.com/ianyh/Amethyst/releases) or using [homebrew cask](https://github.com/Homebrew/homebrew-cask).
+Amethyst (djp3's version) is available for direct download on the [releases page](https://github.com/djp3/Amethyst/releases).
 
 ## Using Amethyst
 
-Amethyst must be given permissions to use the accessibility APIs in the Privacy & Security tab, Privacy -> Accessibilty.
-
-<p align="center">
-  <img style="text-align: center; border-radius:4px;" width="500px" src="docs/images/accessibility-permission.png" alt="Give Accessibility permission to Amethyst under Privicay and Security." />
-</p>
-
-**_Important note_**: You will probably want to disable `Automatically rearrange Spaces based on most recent use` (found under Mission Control in System Preferences). This setting is enabled by default, and will cause your Spaces to swap places based on use. This makes keyboard navigation between Spaces unpredictable.
-
-<p align="center">
-  <img style="text-align: center" width="500px" src="docs/images/auto-rearranage.png" />
-</p>
-
-or run in a terminal:
-```bash
-defaults write com.apple.dock workspaces-auto-swoosh -bool NO
-killall Dock
-```
+Amethyst must be given permission to use the accessibility APIs, in System Settings under Privacy & Security -> Accessibility.
+Window animation (Animate window movement, on the General tab of Preferences) works without anything more, but on macOS 14 or later it is much smoother if you also allow Screen Recording: Amethyst then slides pictures of the windows instead of moving the windows themselves.
 
 ## Configuration
 
 ### Keyboard Shortcuts
-
-Amethyst uses two modifier combinations (`mod1` and `mod2`) and can optionally use another two (`mod3` and `mod4`).
-
-| Default Shortcut | Description |
-|---|---|
-| `mod1` | `option + shift` |
-| `mod2` | `ctrl + option + shift` |
-| `mod3` | not defined by default |
-| `mod4` | not defined by default |
-
-And defines the following commands, mostly a mapping to xmonad key combinations.
-
-| Default Shortcut | Description |
-|---|---|
-| `mod1 + space` | Cycle layout forward |
-| `mod2 + space` | Cycle layout backwards |
-| `mod1 + h` | Shrink the main pane |
-| `mod1 + l` | Expand the main pane |
-| `mod1 + ,` | Increase main pane count |
-| `mod1 + .` | Decrease main pane count |
-| `mod1 + j` | Move focus counter clockwise |
-| `mod1 + k` | Move focus clockwise |
-| `mod1 + p` | Move focus to counter clockwise screen |
-| `mod1 + n` | Move focus to clockwise screen |
-| `mod2 + h` | Swap focused window to counter clockwise screen |
-| `mod2 + l` | Swap focused window to clockwise screen |
-| `mod2 + j` | Swap focused window counter clockwise |
-| `mod2 + k` | Swap focused window clockwise |
-| `mod1 + enter` | Swap focused window with main window |
-| `mod1 + z` | Force windows to be reevaluated |
-| `mod2 + z` | Relaunch Amethyst |
-| `mod2 + left` | Throw focused window to space left |
-| `mod2 + right` | Throw focused window to space right |
-| `mod2 + 1` | Throw focused window to space 1 |
-| `mod2 + 2` | Throw focused window to space 2 |
-| `mod2 + 3` | Throw focused window to space 3 |
-| `mod2 + 4` | Throw focused window to space 4 |
-| `mod2 + 5` | Throw focused window to space 5 |
-| `mod2 + 6` | Throw focused window to space 6 |
-| `mod2 + 7` | Throw focused window to space 7 |
-| `mod2 + 8` | Throw focused window to space 8 |
-| `mod2 + 9` | Throw focused window to space 9 |
-| `mod2 + 0` | Throw focused window to space 10 |
-| `none`     | Throw focused window to space 11 |
-| `none`     | Throw focused window to space 12 |
-| `none`     | Throw focused window to space 13 |
-| `none`     | Throw focused window to space 14 |
-| `none`     | Throw focused window to space 15 |
-| `none`     | Throw focused window to space 16 |
-| `mod1 + w` | Focus Screen 1 |
-| `mod2 + w` | Throw focused window to screen 1 |
-| `mod1 + e` | Focus Screen 2 |
-| `mod2 + e` | Throw focused window to screen 2 |
-| `mod1 + r` | Focus Screen 3 |
-| `mod2 + r` | Throw focused window to screen 3 |
-| `mod1 + q` | Focus Screen 4 |
-| `mod2 + q` | Throw focused window to screen 4 |
-| `mod1 + g` | Focus Screen 5 |
-| `mod2 + g` | Throw focused window to screen 5 |
-| `mod1 + t` | Toggle float for focused window |
-| `mod1 + i` | Display current layout |
-| `mod2 + t` | Toggle global tiling |
-| `mod1 + a` | Select tall layout |
-| `none` | Select tall-right layout |
-| `mod1 + s` | Select wide layout |
-| `none` | Select middle-wide layout |
-| `mod1 + d` | Select fullscreen layout |
-| `mod1 + f` | Select column layout |
-| `none` | Select row layout |
-| `none` | Select floating layout |
-| `none` | Select widescreen-tall layout |
-| `none` | Select bsp layout |
-| `none` | Select tsp layout |
+There are lots and lots of keyboard shortcuts (see the Shortcuts tab of Preferences).  This app is really about not having to monkey around with your mouse to place windows.
 
 ### Available Layouts
 
@@ -138,7 +49,7 @@ Layouts can also be enabled/disabled to control whether they appear in the cycle
 
 #### Tall
 
-The default layout. This gives you one "main pane" on the left, and one other pane on the right. By default, one window is placed in the main pane (extending the full height of the screen), and all remaining windows are placed in the other pane. If either pane has more than one window, that pane will be evenly split into rows, to show them all. You can use the keyboard shortcuts above to control which window(s), and how many, are in the main pane, as well as the horizontal size of the main pane vs. the other pane.
+The default layout. This gives you one "main pane" on the left, and one other pane on the right. By default, one window is placed in the main pane (extending the full height of the screen), and all remaining windows are placed in the other pane. If either pane has more than one window, that pane will be evenly split into rows, to show them all. You can use the keyboard shortcuts to control which window(s), and how many, are in the main pane, as well as the horizontal size of the main pane vs. the other pane.
 
 #### Tall-Right
 
@@ -174,6 +85,14 @@ Exactly like *3Column-Left*, but the main pane is in the middle, with the other 
 
 Exactly like *3Column-Left*, but the main pane is on the right, with the other panes in the middle and on the left.
 
+#### 4Column-Left
+
+Four columns of equal width, with the main pane on the left. The other windows are shared among the remaining three columns, any extras going to the column next to the main pane, and a column with more than one window is split into rows.
+
+#### 4Column-Right
+
+Exactly like *4Column-Left*, but the main pane is on the right.
+
 #### Widescreen-Tall
 
  This mode is like *Tall*, but if there are multiple windows in the main pane,
@@ -185,6 +104,10 @@ Exactly like *3Column-Left*, but the main pane is on the right, with the other p
  Other layouts that work well on very wide screens include any that allow for
  more than two columns (to take advantage of the screen width), such as
  any of the *3Column-&ast;* layouts, or *Column*.
+
+#### Widescreen-Tall-Right
+
+Exactly the same as *Widescreen-Tall*, but the main pane is on the right.
 
 #### Fullscreen
 
@@ -216,12 +139,12 @@ Custom layouts can be implemented via JavaScript. See [Custom Layouts](docs/cust
 
 ### Configuration File
 
-Amethyst supports configuration via YAML in the home directory. See [Configuration Files](docs/configuration-files.md). Note that if configuration file is present, it will override the settings defined via the GUI.
+Amethyst supports configuration via YAML in the home directory. See [Configuration Files](docs/configuration-files.md). Note that if a configuration file is present, it will override the settings defined via the GUI.
 
 ## Building Amethyst Locally
 
-If you would like to test your changes locally, Amethyst can be built using [`fastlane`](https://github.com/fastlane/fastlane). Just run the command `fastlane` in the root folder, and the app will be available at `./build/Amethyst.app`. (You may need to provision the app under "Signing & Capabilities" in XCode first.)
+If you would like to test your changes locally, open `Amethyst.xcworkspace` in Xcode, choose your own team under "Signing & Capabilities", and run the Amethyst scheme. Amethyst can also be built with [`fastlane`](https://github.com/fastlane/fastlane): run `fastlane` in the root folder and the app will be available at `./build/Amethyst.app`. The lane exports with the team named in `exportOptions.plist`, which is Ian's, so replace it with your own team first.
 
 ## Contributing
 
-If you'd like to contribute please branch off of the `development` branch and open pull requests against it rather than `master`. Otherwise just try to stick to the general style of the code.
+If you'd like to contribute please branch off of the `development` branch and open pull requests against it rather than `production`. Otherwise just try to stick to the general style of the code.
