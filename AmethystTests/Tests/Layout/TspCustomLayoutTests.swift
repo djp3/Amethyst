@@ -14,8 +14,18 @@ import Quick
 /// The JavaScript Tertiary Split Partition layout bundled with the app, checked against the same cases as the native one.
 class TspCustomLayoutTests: QuickSpec {
     override func spec() {
+        // The tests run inside the app, so the preference is the user's own: each test starts from the default and
+        // puts the user's value back afterwards.
+        var savedNewWindowsToMain: Any?
+
+        beforeEach {
+            savedNewWindowsToMain = UserDefaults.standard.object(forKey: "new-windows-to-main")
+            UserDefaults.standard.set(false, forKey: "new-windows-to-main")
+        }
+
         afterEach {
             TestScreen.availableScreens = []
+            UserDefaults.standard.set(savedNewWindowsToMain, forKey: "new-windows-to-main")
         }
 
         /// The bundled layout, found through the app's own Layouts folder.
@@ -46,6 +56,45 @@ class TspCustomLayoutTests: QuickSpec {
         /// The expected frame of each window, keyed by window, in the order the windows were created.
         func expected(_ windows: [TestWindow], _ frames: [CGRect]) -> [String: CGRect] {
             return Dictionary(uniqueKeysWithValues: zip(windows.map { $0.id() }, frames))
+        }
+
+        /// The frame `layout` gives each window when the window list holds `order`, keyed by window.
+        func frames(of layout: Layout<TestWindow>, for order: [TestWindow], on screen: TestScreen) -> [String: CGRect] {
+            let windowSet = WindowSet<TestWindow>(
+                windows: order.map { LayoutWindow<TestWindow>(id: $0.id(), frame: $0.frame(), isFocused: false) },
+                isWindowWithIDActive: { _ in return true },
+                isWindowWithIDFloating: { _ in return false },
+                windowForID: { id in return order.first { $0.id() == id } }
+            )
+            let assignments = layout.frameAssignments(windowSet, on: screen) ?? []
+            return Dictionary(uniqueKeysWithValues: assignments.map { ($0.frameAssignment.window.id, $0.frameAssignment.frame) })
+        }
+
+        /// Opens nine windows one at a time, joining the list where the preference puts them, and checks that every
+        /// arrival leaves each earlier window inside the frame it had. When new windows take the main pane, the window
+        /// that was main has to make way and is exempt.
+        func expectArrivalsToLeaveWindowsInPlace(width: CGFloat, height: CGFloat, newWindowsToMain: Bool) {
+            UserDefaults.standard.set(newWindowsToMain, forKey: "new-windows-to-main")
+            let screen = TestScreen(frame: CGRect(x: 0, y: 0, width: width, height: height))
+            TestScreen.availableScreens = [screen]
+            let layout = bundledLayout()
+            let arrived = (0..<9).map { _ in TestWindow(element: nil)! }
+
+            var previous: [String: CGRect] = [:]
+            for count in 1...arrived.count {
+                let order = newWindowsToMain ? Array(arrived.prefix(count).reversed()) : Array(arrived.prefix(count))
+                let current = frames(of: layout, for: order, on: screen)
+                expect(current.count).to(equal(count))
+
+                for (index, window) in arrived.prefix(count - 1).enumerated() where !(newWindowsToMain && index == count - 2) {
+                    guard let before = previous[window.id()], let after = current[window.id()] else {
+                        fail("window \(index + 1) has no frame when window \(count) arrives")
+                        continue
+                    }
+                    expect(before.contains(after)).to(beTrue(), description: "window \(index + 1) moves from \(before) to \(after) when window \(count) arrives")
+                }
+                previous = current
+            }
         }
 
         describe("bundling") {
@@ -346,6 +395,69 @@ class TspCustomLayoutTests: QuickSpec {
                     CGRect(x: 1035, y: 0, width: 1665, height: 1350),
                     CGRect(x: 0, y: 0, width: 1035, height: 1350)
                 ]))
+            }
+        }
+
+        describe("new windows to main") {
+            beforeEach {
+                UserDefaults.standard.set(true, forKey: "new-windows-to-main")
+            }
+
+            it("leaves the first window on the left and moves the main window into the right third when a third window arrives") {
+                let screen = TestScreen(frame: CGRect(x: 0, y: 0, width: 2700, height: 1350))
+                TestScreen.availableScreens = [screen]
+                let layout = bundledLayout()
+                let arrived = (0..<3).map { _ in TestWindow(element: nil)! }
+
+                expect(frames(of: layout, for: [arrived[1], arrived[0]], on: screen)).to(equal(expected(arrived, [
+                    CGRect(x: 0, y: 0, width: 900, height: 1350),
+                    CGRect(x: 900, y: 0, width: 1800, height: 1350)
+                ])))
+
+                expect(frames(of: layout, for: [arrived[2], arrived[1], arrived[0]], on: screen)).to(equal(expected(arrived, [
+                    CGRect(x: 0, y: 0, width: 900, height: 1350),
+                    CGRect(x: 1800, y: 0, width: 900, height: 1350),
+                    CGRect(x: 900, y: 0, width: 900, height: 1350)
+                ])))
+            }
+
+            it("divides the first window's pane for the fourth window and leaves the right third alone") {
+                let screen = TestScreen(frame: CGRect(x: 0, y: 0, width: 2700, height: 1350))
+                TestScreen.availableScreens = [screen]
+                let arrived = (0..<4).map { _ in TestWindow(element: nil)! }
+
+                expect(frames(of: bundledLayout(), for: Array(arrived.reversed()), on: screen)).to(equal(expected(arrived, [
+                    CGRect(x: 0, y: 450, width: 900, height: 900),
+                    CGRect(x: 1800, y: 0, width: 900, height: 1350),
+                    CGRect(x: 0, y: 0, width: 900, height: 450),
+                    CGRect(x: 900, y: 0, width: 900, height: 1350)
+                ])))
+            }
+
+            it("keeps earlier windows in place as windows arrive on a wide screen") {
+                expectArrivalsToLeaveWindowsInPlace(width: 2700, height: 1350, newWindowsToMain: true)
+            }
+
+            it("keeps earlier windows in place as windows arrive on a tall screen") {
+                expectArrivalsToLeaveWindowsInPlace(width: 1350, height: 2700, newWindowsToMain: true)
+            }
+
+            it("keeps earlier windows in place as windows arrive on a square screen") {
+                expectArrivalsToLeaveWindowsInPlace(width: 2700, height: 2700, newWindowsToMain: true)
+            }
+        }
+
+        describe("new windows at the end") {
+            it("keeps earlier windows in place as windows arrive on a wide screen") {
+                expectArrivalsToLeaveWindowsInPlace(width: 2700, height: 1350, newWindowsToMain: false)
+            }
+
+            it("keeps earlier windows in place as windows arrive on a tall screen") {
+                expectArrivalsToLeaveWindowsInPlace(width: 1350, height: 2700, newWindowsToMain: false)
+            }
+
+            it("keeps earlier windows in place as windows arrive on a square screen") {
+                expectArrivalsToLeaveWindowsInPlace(width: 2700, height: 2700, newWindowsToMain: false)
             }
         }
     }
